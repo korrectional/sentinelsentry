@@ -142,8 +142,18 @@ class AlertDashboardAgent(BaseAgent):
 
         return table
 
+    def _find_incident(self, incident_id: str) -> Optional[EnrichedIncident]:
+        """Find incident by ID, accepting with or without 'INC-' prefix."""
+        if incident_id in self.incidents:
+            return self.incidents[incident_id]
+        if f"INC-{incident_id}" in self.incidents:
+            return self.incidents[f"INC-{incident_id}"]
+        if incident_id.startswith("INC-") and incident_id[4:] in self.incidents:
+            return self.incidents[incident_id[4:]]
+        return None
+
     def get_incident(self, incident_id: str) -> Optional[EnrichedIncident]:
-        return self.incidents.get(incident_id)
+        return self._find_incident(incident_id)
 
     def get_pending_escalations(self) -> List[EnrichedIncident]:
         """Returns incidents requiring urgent human dispatcher action."""
@@ -154,17 +164,18 @@ class AlertDashboardAgent(BaseAgent):
 
     def acknowledge_incident(self, incident_id: str) -> EnrichedIncident:
         """Dispatcher action: Acknowledge an active emergency escalation."""
-        inc = self.incidents.get(incident_id)
+        inc = self._find_incident(incident_id)
         if not inc:
             raise KeyError(f"Incident '{incident_id}' not found.")
+        actual_id = inc.incident_id
         inc.is_escalated = False
         inc.human_status = "ACKNOWLEDGED"
         inc.metadata["acknowledged_at"] = datetime.now(timezone.utc).isoformat()
-        if incident_id in self.escalated_ids:
-            self.escalated_ids.remove(incident_id)
+        if actual_id in self.escalated_ids:
+            self.escalated_ids.remove(actual_id)
         self.stats["escalated_count"] = max(0, self.stats["escalated_count"] - 1)
         self.stats["routine_count"] += 1
-        logger.info(f"[Dispatcher] Acknowledged incident {incident_id}")
+        logger.info(f"[Dispatcher] Acknowledged incident {actual_id}")
         return inc
 
     def dispatch_incident(
@@ -174,51 +185,54 @@ class AlertDashboardAgent(BaseAgent):
         dispatcher_notes: Optional[str] = None,
     ) -> EnrichedIncident:
         """Dispatcher action: Assign units and mark incident as DISPATCHED."""
-        inc = self.incidents.get(incident_id)
+        inc = self._find_incident(incident_id)
         if not inc:
             raise KeyError(f"Incident '{incident_id}' not found.")
+        actual_id = inc.incident_id
         assigned = units or ["Engine 4", "Medic 2", "Ladder 1"]
         inc.human_status = f"DISPATCHED ({', '.join(assigned)})"
         inc.is_escalated = False
-        if incident_id in self.escalated_ids:
-            self.escalated_ids.remove(incident_id)
+        if actual_id in self.escalated_ids:
+            self.escalated_ids.remove(actual_id)
         if dispatcher_notes:
             inc.metadata["dispatcher_notes"] = dispatcher_notes
         inc.metadata["dispatched_units"] = assigned
         inc.metadata["dispatched_at"] = datetime.now(timezone.utc).isoformat()
-        logger.info(f"[Dispatcher] Dispatched incident {incident_id} to {assigned}")
+        logger.info(f"[Dispatcher] Dispatched incident {actual_id} to {assigned}")
         return inc
 
     def dismiss_incident(self, incident_id: str, reason: str = "False Alarm") -> EnrichedIncident:
         """Dispatcher action: Dismiss incident without dispatch."""
-        inc = self.incidents.get(incident_id)
+        inc = self._find_incident(incident_id)
         if not inc:
             raise KeyError(f"Incident '{incident_id}' not found.")
+        actual_id = inc.incident_id
         inc.human_status = f"DISMISSED ({reason})"
         inc.is_escalated = False
-        if incident_id in self.escalated_ids:
-            self.escalated_ids.remove(incident_id)
+        if actual_id in self.escalated_ids:
+            self.escalated_ids.remove(actual_id)
         inc.metadata["dismissed_reason"] = reason
         inc.metadata["dismissed_at"] = datetime.now(timezone.utc).isoformat()
-        logger.info(f"[Dispatcher] Dismissed incident {incident_id}: {reason}")
+        logger.info(f"[Dispatcher] Dismissed incident {actual_id}: {reason}")
         return inc
 
     def escalate_incident(self, incident_id: str, reason: str = "Supervisor Override") -> EnrichedIncident:
         """Dispatcher action: Manually escalate an incident for priority response."""
-        inc = self.incidents.get(incident_id)
+        inc = self._find_incident(incident_id)
         if not inc:
             raise KeyError(f"Incident '{incident_id}' not found.")
+        actual_id = inc.incident_id
         inc.is_escalated = True
         inc.human_status = f"MANUALLY ESCALATED ({reason})"
         inc.metadata["manual_escalation_reason"] = reason
-        if incident_id not in self.escalated_ids:
-            self.escalated_ids.append(incident_id)
-        logger.info(f"[Dispatcher] Manually escalated incident {incident_id}: {reason}")
+        if actual_id not in self.escalated_ids:
+            self.escalated_ids.append(actual_id)
+        logger.info(f"[Dispatcher] Manually escalated incident {actual_id}: {reason}")
         return inc
 
     def render_incident_detail(self, incident_id: str) -> str:
         """Render a formatted string or card detailing a specific incident."""
-        inc = self.incidents.get(incident_id)
+        inc = self._find_incident(incident_id)
         if not inc:
             return f"Incident {incident_id} not found."
         lines = [

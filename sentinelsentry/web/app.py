@@ -192,6 +192,69 @@ async def run_scripted_demo_sequence():
         state.is_demo_running = False
 
 
+def run_scripted_demo_sync():
+    """Synchronously execute the full crisis scenario without asyncio sleep delays (for testing and discrete runs)."""
+    state.is_demo_running = True
+    try:
+        # Step 1: Routine Fender Bender
+        item_id1 = f"demo-routine-{int(time.time())}"
+        item1 = RawFeedItem(
+            id=item_id1,
+            feed_id="cad_police",
+            feed_name="Raleigh Metro 911 / Police CAD",
+            title="CAD: 10-50 PD Crabtree",
+            raw_text="10-50 PD ONLY CRABTREE VALLEY MALL LOT. MINOR FENDER BENDER NO INJURIES DRIVERS EXCHANGING INFO",
+        )
+        state.bus.record_recent_item_sync(item1)
+        state.bus.ingest_items.append(item1)
+        state.coordinator.drain(max_rounds=3)
+
+        # Step 2: Messy High-Risk 2-Alarm Fire
+        item_id2 = f"demo-fire-cad-{int(time.time())}"
+        item2 = RawFeedItem(
+            id=item_id2,
+            feed_id="cad_police",
+            feed_name="Raleigh Metro 911 / Police CAD",
+            title="CAD: 10-70 Saunders",
+            raw_text="10-70 COMM BLDG 1200 S SAUNDERS ST. FLAMES VISIBLE ROOF EVAC IN PROGRESS 1 SUBJ REPORTED INSIDE",
+            metadata={"scenario_id": "SCN-001-WAREHOUSE-FIRE"},
+        )
+        state.bus.record_recent_item_sync(item2)
+        state.bus.ingest_items.append(item2)
+        state.coordinator.drain(max_rounds=3)
+
+        # Step 3: Corroborating Citizen Eyewitness Post
+        item_id3 = f"demo-fire-social-{int(time.time())}"
+        item3 = RawFeedItem(
+            id=item_id3,
+            feed_id="social_crisis",
+            feed_name="Citizen Eyewitness Crisis Stream (X/Reddit)",
+            title="Citizen X: Huge Explosion Saunders St",
+            raw_text="Holy smoke huge explosions coming from warehouse district on Saunders St downtown Raleigh sirens everywhere!! Thick black smoke filling sky",
+            metadata={"scenario_id": "SCN-001-WAREHOUSE-FIRE"},
+        )
+        state.bus.record_recent_item_sync(item3)
+        state.bus.ingest_items.append(item3)
+
+        # Also inject Wake Fire 2-alarm dispatch
+        item_id4 = f"demo-fire-wake-{int(time.time())}"
+        item4 = RawFeedItem(
+            id=item_id4,
+            feed_id="fire_rescue",
+            feed_name="Wake County Fire & Rescue Dispatch",
+            title="WAKE FIRE: 2-ALARM COMM FIRE",
+            raw_text="STRUCTURE FIRE: 2-alarm commercial at 1200 S Saunders St. Heavy smoke venting 2nd floor, 1 occupant trapped, collapse zone established",
+            metadata={"scenario_id": "SCN-001-WAREHOUSE-FIRE"},
+        )
+        state.bus.record_recent_item_sync(item4)
+        state.bus.ingest_items.append(item4)
+
+        # Step 4 & 5: Swarm drain -> Verification cross-corroborates -> Escalation fires!
+        state.coordinator.drain(max_rounds=5)
+    finally:
+        state.is_demo_running = False
+
+
 # ------------------------------------------------------------------
 # REST API Endpoints
 # ------------------------------------------------------------------
@@ -237,13 +300,16 @@ def submit_incident(req: SubmitIncidentRequest):
     Manual dispatch submission with optional multimodal image attachment.
     Immediately triaged, verified, geocoded, and pushed to the live board.
     """
+    if not req.raw_text or not req.raw_text.strip():
+        raise HTTPException(status_code=400, detail="Dispatch raw text cannot be empty.")
+
     item_id = f"manual-{int(time.time()*1000)}"
     item = RawFeedItem(
         id=item_id,
         feed_id=req.feed_id or "web_upload",
         feed_name="Dispatcher Manual Entry",
         title=req.title or "Emergency Report",
-        raw_text=req.raw_text,
+        raw_text=req.raw_text.strip(),
         image_data=req.image_data,
         image_mime_type=req.image_mime_type or "image/jpeg",
     )
@@ -304,7 +370,11 @@ async def trigger_demo():
 @app.post("/api/demo/speed")
 def set_demo_speed(req: SpeedControlRequest):
     """Update speed multiplier (0.5x, 1x, 2x, 5x, 100x for Instant)."""
-    state.speed_multiplier = max(0.1, float(req.multiplier))
+    import math
+    val = float(req.multiplier)
+    if math.isnan(val) or math.isinf(val) or val <= 0:
+        val = 1.0
+    state.speed_multiplier = min(100.0, max(0.1, val))
     return JSONResponse(content={"status": "speed_updated", "speed_multiplier": state.speed_multiplier})
 
 

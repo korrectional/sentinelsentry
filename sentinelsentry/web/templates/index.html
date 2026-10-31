@@ -434,6 +434,7 @@
     let currentFilter = 'all';
     let uploadedImageBase64 = null;
     let topEscalationId = null;
+    let lastDemoRunningState = null;
 
     // Preset Data
     const PRESETS = {
@@ -504,21 +505,6 @@
         if (!inc.latitude || !inc.longitude) return;
         seenIds.add(inc.incident_id);
 
-        if (activeMarkers[inc.incident_id]) {
-          // Update popup content if changed
-          return;
-        }
-
-        const iconClass = getRiskPinClass(inc.casualty_risk_level);
-        const customIcon = L.divIcon({
-          className: 'custom-pin',
-          html: `<div class="${iconClass}"></div>`,
-          iconSize: [22, 22],
-          iconAnchor: [11, 11],
-        });
-
-        const marker = L.marker([inc.latitude, inc.longitude], { icon: customIcon });
-
         const photoHTML = inc.image_data ? `<img src="${inc.image_data}" class="w-full h-24 object-cover rounded mb-2 border border-slate-700"/>` : '';
 
         const popupContent = `
@@ -543,6 +529,21 @@
           </div>
         `;
 
+        if (activeMarkers[inc.incident_id]) {
+          const m = activeMarkers[inc.incident_id];
+          if (m.getPopup()) m.getPopup().setContent(popupContent);
+          return;
+        }
+
+        const iconClass = getRiskPinClass(inc.casualty_risk_level);
+        const customIcon = L.divIcon({
+          className: 'custom-pin',
+          html: `<div class="${iconClass}"></div>`,
+          iconSize: [22, 22],
+          iconAnchor: [11, 11],
+        });
+
+        const marker = L.marker([inc.latitude, inc.longitude], { icon: customIcon });
         marker.bindPopup(popupContent);
         marker.addTo(markersLayer);
         activeMarkers[inc.incident_id] = marker;
@@ -712,12 +713,18 @@
 
       // Demo button state
       const demoBtn = document.getElementById('btn-run-demo');
-      if (data.is_demo_running) {
-        demoBtn.classList.add('animate-pulse');
-        demoBtn.innerText = 'Demo Running...';
-      } else {
-        demoBtn.classList.remove('animate-pulse');
-        demoBtn.innerHTML = `<i data-lucide="play" class="w-3.5 h-3.5 fill-current mr-1"></i><span>Run Demo (90s)</span>`;
+      if (demoBtn && data.is_demo_running !== lastDemoRunningState) {
+        lastDemoRunningState = data.is_demo_running;
+        if (data.is_demo_running) {
+          demoBtn.classList.add('animate-pulse', 'bg-amber-600');
+          demoBtn.classList.remove('bg-blue-600');
+          demoBtn.innerText = 'Demo Scenario Running...';
+        } else {
+          demoBtn.classList.remove('animate-pulse', 'bg-amber-600');
+          demoBtn.classList.add('bg-blue-600');
+          demoBtn.innerHTML = `<i data-lucide="play" class="w-3.5 h-3.5 fill-current mr-1"></i><span>Run Demo (90s)</span>`;
+          lucide.createIcons();
+        }
       }
     }
 

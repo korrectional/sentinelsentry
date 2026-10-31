@@ -178,24 +178,44 @@ class SwarmCoordinator:
 
         # 1. Ingest Stage
         for ing in self.ingest_agents:
-            counts["ingested"] += ing.step_sync()
+            try:
+                counts["ingested"] += ing.step_sync()
+            except Exception as exc:
+                ing.error_count += 1
+                logger.error(f"[{ing.agent_name}] Ingest step error: {exc}")
 
         # 2. Triage Stage
         worker_batch = 5 if len(self.triage_workers) > 1 else None
         for trg in self.triage_workers:
-            counts["triaged"] += trg.step_sync(max_items=worker_batch) if worker_batch else trg.step_sync()
+            try:
+                counts["triaged"] += trg.step_sync(max_items=worker_batch) if worker_batch else trg.step_sync()
+            except Exception as exc:
+                trg.error_count += 1
+                logger.error(f"[{trg.agent_name}] Triage step error: {exc}")
 
         # 3. Verification Stage (risk >= 4)
         if self.verification_agent:
-            counts["verified"] += self.verification_agent.step_sync()
+            try:
+                counts["verified"] += self.verification_agent.step_sync()
+            except Exception as exc:
+                self.verification_agent.error_count += 1
+                logger.error(f"[{self.verification_agent.agent_name}] Verification step error: {exc}")
 
         # 4. Geocoder Stage
         if self.geocoder_agent:
-            counts["geocoded"] += self.geocoder_agent.step_sync()
+            try:
+                counts["geocoded"] += self.geocoder_agent.step_sync()
+            except Exception as exc:
+                self.geocoder_agent.error_count += 1
+                logger.error(f"[{self.geocoder_agent.agent_name}] Geocoder step error: {exc}")
 
         # 5. Dashboard Stage
         if self.dashboard_agent:
-            counts["delivered"] += self.dashboard_agent.step_sync()
+            try:
+                counts["delivered"] += self.dashboard_agent.step_sync()
+            except Exception as exc:
+                self.dashboard_agent.error_count += 1
+                logger.error(f"[{self.dashboard_agent.agent_name}] Dashboard step error: {exc}")
 
         return counts
 
