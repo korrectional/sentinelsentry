@@ -43,6 +43,7 @@ class VerificationAgent(BaseAgent):
         target_raw_tokens = self._extract_location_tokens(incident.feed_item.raw_text)
 
         corroborating = []
+        seen_cand_feeds = set()
         for cand in recent_items:
             if cand.feed_id == target_feed:
                 continue
@@ -60,7 +61,11 @@ class VerificationAgent(BaseAgent):
 
             if loc_overlap or same_scenario:
                 weight = 0.25 if cand.feed_id in ("cad_police", "fire_rescue", "ems_scanner") else 0.15
-                corroborating.append((cand, weight))
+                if cand.feed_id not in seen_cand_feeds:
+                    seen_cand_feeds.add(cand.feed_id)
+                    corroborating.append((cand, weight))
+                else:
+                    corroborating.append((cand, 0.0))
 
         return corroborating
 

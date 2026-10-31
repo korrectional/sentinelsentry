@@ -74,12 +74,17 @@ INCIDENT_TEMPLATES = {
         ("Heavy rain causing minor ponding along curbs on {loc}. Passable with caution.", 1, 0.80),
         ("Tree down blocking right lane on {loc}. No vehicles hit, DOT notified for removal.", 1, 0.85),
     ],
+    IncidentType.HAZMAT: [
+        ("Hazmat alert: 50 gallon diesel fuel spill following box truck fuel tank rupture at {loc}. Drains secured.", 3, 0.90),
+        ("Chemical fumes reported in science lab at {loc}. Building evacuated, 2 students evaluated for eye irritation.", 3, 0.91),
+        ("Unknown corrosive liquid leaking from abandoned drum behind industrial lot on {loc}. Perimeter taped off.", 4, 0.88),
+        ("Ammonia leak reported at cold storage refrigeration facility on {loc}. Level A hazmat team responding.", 5, 0.94),
+    ],
     IncidentType.GAS_LEAK: [
         ("10-75 HAZMAT GAS LEAK {loc}. Construction crew ruptured 4-inch main, loud roaring sound, evacuating 500ft.", 4, 0.93),
         ("Strong natural gas odor reported in basement of commercial building at {loc}. Gas company en route.", 3, 0.85),
-        ("Hazmat alert: 50 gallon diesel fuel spill following box truck fuel tank rupture at {loc}. Drains secured.", 3, 0.90),
-        ("Chemical fumes reported in science lab at {loc}. Building evacuated, 2 students evaluated for eye irritation.", 3, 0.91),
         ("Minor gas odor outdoor near meter at {loc}. Tech investigating, no reading inside residence.", 2, 0.82),
+        ("Gas main struck during directional drilling at {loc}. Gas utility clamping line, road closed.", 3, 0.90),
     ],
     IncidentType.CIVIL_UNREST: [
         ("10-33 CODE 3 SHOTS REPORTED {loc}. Multiple callers report rapid gunfire outside venue, crowd fleeing.", 5, 0.80),

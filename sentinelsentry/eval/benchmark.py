@@ -61,7 +61,10 @@ class BenchmarkRunner:
 
     def _load_test_data(self) -> None:
         if not self.test_file_path.exists():
-            raise FileNotFoundError(f"Test file not found: {self.test_file_path}")
+            from sentinelsentry.data.generate_dataset import generate_and_save_all
+            logger.info(f"Test file not found. Auto-generating test data to {self.test_file_path.parent}...")
+            generate_and_save_all(self.test_file_path.parent)
+
         with open(self.test_file_path, "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():

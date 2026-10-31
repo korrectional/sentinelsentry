@@ -134,7 +134,7 @@ class LocalTriageEngine:
         patterns = [
             r"(\d{2,5}\s+[A-Za-z0-9\.\s]+(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road))",
             r"(I-\d{1,3}\s+(?:EB|WB|NB|SB|Eastbound|Westbound)?[^,\.\n]+)",
-            r"([A-Za-z\s]+(?:Ave|St|Rd|Blvd)\s+(?:&|and|nr|at)\s+[A-Za-z\s]+(?:Ave|St|Rd|Blvd))",
+            r"([A-Za-z\s]+(?:Ave|St|Rd|Blvd)\s+(?:&|and|nr|near|at)\s+[A-Za-z\s]+(?:Ave|St|Rd|Blvd|Dr))",
             r"(Crabtree Valley Mall[^,\.\n]*)",
             r"(Crabtree Creek[^,\.\n]*)",
             r"(Glenwood Ave & Peace St[^,\.\n]*)",
