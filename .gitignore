@@ -41,3 +41,6 @@ sentinelsentry_weights/
 .idea/
 .DS_Store
 Thumbs.db
+
+.env
+.env.local
