@@ -52,13 +52,31 @@ class VerificationAgent(BaseAgent):
                 words.add(clean)
         return words
 
+    TYPE_CRISIS_KEYWORDS = {
+        "Structure Fire": {"fire", "smoke", "flames", "burn", "alarm", "explosion", "explosions", "warehouse", "building", "hazmat", "standby", "2-alarm", "2nd alarm"},
+        "Vehicle Accident / Rescue": {"accident", "crash", "rollover", "extrication", "highway", "interstate", "traffic", "trauma", "patients", "car", "suv", "truck", "standstill", "lanes", "jaws"},
+        "Severe Weather / Flooding": {"flood", "flooding", "water", "creek", "rain", "swiftwater", "rescue", "gauge", "weather", "storm", "submerged", "windshields"},
+        "Infrastructure Failure / Gas Leak": {"gas", "leak", "odor", "smell", "fumes", "evac", "evacuating", "rupture", "pipeline", "rotten"},
+        "Civil Unrest / Active Threat": {"shots", "shooting", "gun", "threat", "fight", "disturbance", "police", "crowd", "popping", "running"},
+        "Medical Emergency": {"cpr", "medic", "cardiac", "trauma", "unresponsive", "patient", "patients", "rescue", "ems", "burn", "burns"},
+        "Hazardous Materials": {"hazmat", "chemical", "fumes", "diesel", "spill", "ammonia", "drum"},
+    }
+
     def _find_corroborations(self, incident: EnrichedIncident, recent_items: List[RawFeedItem]) -> List[Tuple[RawFeedItem, float]]:
         target_feed = incident.feed_item.feed_id
         target_time = incident.feed_item.published_at
 
         target_loc_text = incident.triage.location_text.lower().strip()
         has_valid_target_loc = target_loc_text != "unknown" and len(target_loc_text) > 3
-        target_loc_tokens = self._extract_location_tokens(incident.triage.location_text) if has_valid_target_loc else set()
+        if not has_valid_target_loc:
+            # Cannot cross-corroborate an incident with an unknown location
+            return []
+
+        target_loc_tokens = self._extract_location_tokens(incident.triage.location_text)
+        if not target_loc_tokens:
+            return []
+
+        target_keywords = self.TYPE_CRISIS_KEYWORDS.get(incident.triage.incident_type, set())
 
         corroborating = []
         for cand in recent_items:
@@ -73,15 +91,20 @@ class VerificationAgent(BaseAgent):
             if cand.feed_id == "weather_skywarn" and incident.triage.incident_type != "Severe Weather / Flooding":
                 continue
 
+            # Check location overlap
+            cand_tokens = self._extract_location_tokens(cand.raw_text)
+            loc_overlap = bool(target_loc_tokens.intersection(cand_tokens))
+
+            # Semantic / scenario compatibility check
             same_scenario = bool(
                 cand.metadata.get("scenario_id")
                 and cand.metadata.get("scenario_id") == incident.feed_item.metadata.get("scenario_id")
             )
+            cand_text_lower = cand.raw_text.lower()
+            semantic_overlap = any(kw in cand_text_lower for kw in target_keywords) if target_keywords else False
+            is_official_cross_call = cand.feed_id in ("cad_police", "fire_rescue", "ems_scanner") and incident.feed_item.feed_id in ("cad_police", "fire_rescue", "ems_scanner")
 
-            cand_tokens = self._extract_location_tokens(cand.raw_text)
-            loc_overlap = bool(target_loc_tokens and target_loc_tokens.intersection(cand_tokens))
-
-            if same_scenario or loc_overlap:
+            if loc_overlap and (same_scenario or semantic_overlap or is_official_cross_call):
                 weight = 0.25 if cand.feed_id in ("cad_police", "fire_rescue", "ems_scanner") else 0.15
                 corroborating.append((cand, weight))
 
@@ -129,12 +152,24 @@ class VerificationAgent(BaseAgent):
         incident.triage.credibility_score = adjusted_cred
         incident.verification = report
 
-        if incident.triage.casualty_risk_level >= settings.HIGH_RISK_THRESHOLD and adjusted_cred >= settings.ESCALATION_MIN_CREDIBILITY:
+        is_unknown_loc = incident.triage.location_text.lower().strip() == "unknown"
+        is_unknown_type = incident.triage.incident_type == "Unknown / Other"
+
+        if is_unknown_loc or is_unknown_type:
+            incident.is_escalated = False
+            if is_unknown_loc and is_unknown_type:
+                incident.human_status = "NEEDS REVIEW (Unknown Type & Location)"
+            elif is_unknown_loc:
+                incident.human_status = "NEEDS REVIEW (Location Unresolved)"
+            else:
+                incident.human_status = "NEEDS REVIEW (Unclassified Emergency)"
+        elif incident.triage.casualty_risk_level >= settings.HIGH_RISK_THRESHOLD and adjusted_cred >= settings.ESCALATION_MIN_CREDIBILITY:
             incident.is_escalated = True
             incident.human_status = "ESCALATED"
             self.escalations_triggered += 1
         else:
             incident.is_escalated = False
+            incident.human_status = "ROUTINE"
 
         self.verifications_completed += 1
         return incident

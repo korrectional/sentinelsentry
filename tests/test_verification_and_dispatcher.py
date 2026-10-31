@@ -223,3 +223,88 @@ def test_coordinator_async_mode_start_and_stop():
     assert hasattr(coord, "start")
     assert hasattr(coord, "stop")
     assert coord._running is False
+
+
+def test_triage_engine_messy_citizen_and_scanner_precision():
+    """Verify triage extracts high-risk categories and locations from messy citizen & radio text."""
+    engine = LocalTriageEngine()
+
+    # 1. Swiftwater / Water rescue
+    t1 = engine.predict("WATER RESCUE: 2 vehicles stalled in swift water to windshields at Atlantic Ave & Hodges St nr Crabtree. Callers stranded on car roofs yelling for help.")
+    assert t1.incident_type == "Severe Weather / Flooding"
+    assert t1.casualty_risk_level == 5
+    assert "Atlantic Ave & Hodges St" in t1.location_text
+
+    # 2. Trauma code with Life Flight
+    t2 = engine.predict("TRAUMA CODE: 3 patients I-40 EB Mile 287 Cary exit. 1 pediatric red tag critical, 2 yellow tag trauma, Duke Life Flight requested on standby.")
+    assert t2.incident_type == "Vehicle Accident / Rescue"
+    assert t2.casualty_risk_level == 5
+    assert "I-40 EB Mile 287" in t2.location_text
+
+    # 3. Warehouse explosion eyewitness tweet
+    t3 = engine.predict("Holy smoke huge explosions coming from warehouse district on Saunders St near downtown Raleigh right now sirens everywhere!! Thick black smoke filling sky")
+    assert t3.incident_type == "Structure Fire"
+    assert t3.casualty_risk_level >= 4
+    assert "Saunders St" in t3.location_text
+
+    # 4. Rotten eggs / gas smell citizen report
+    t4 = engine.predict("Everyone running out of 401 Fayetteville building cops screaming move back intense gas smell like rotten eggs sirens everywhere downtown")
+    assert t4.incident_type == "Infrastructure Failure / Gas Leak"
+    assert t4.casualty_risk_level >= 3
+    assert "401 Fayetteville" in t4.location_text
+
+
+def test_verification_unknown_location_never_auto_escalates():
+    """Safety guarantee: Incidents with unknown locations or unclassified types are flagged for review, never auto-escalated."""
+    bus = SwarmEventBus()
+    agent = VerificationAgent(bus=bus)
+
+    # Incident with risk 5 but unknown location
+    raw_item = RawFeedItem(
+        id="item-mystery-01",
+        feed_id="ems_scanner",
+        feed_name="EMS Scanner",
+        title="Unknown Trauma",
+        raw_text="Severe trauma patient in critical condition, location unreadable due to radio static.",
+        published_at=datetime.now(timezone.utc),
+    )
+    inc = EnrichedIncident(
+        incident_id="INC-MYSTERY-001",
+        feed_item=raw_item,
+        triage=TriageOutput(
+            incident_type="Medical Emergency",
+            casualty_risk_level=5,
+            credibility_score=0.95,
+            location_text="Unknown",
+        ),
+    )
+
+    verified = agent.verify_incident_sync(inc)
+    # Must NOT be auto-escalated
+    assert verified.is_escalated is False
+    assert "NEEDS REVIEW" in verified.human_status
+
+
+def test_geocoder_fuzzy_and_landmark_resolution():
+    """Verify all extracted locations resolve cleanly in Geocoder landmark cache."""
+    bus = SwarmEventBus()
+    geocoder = GeocoderAgent(bus=bus, enable_network=False)
+
+    test_locations = [
+        "I-40 EB MM 287 NR CARY EXT RAMP",
+        "Saunders St near downtown Raleigh",
+        "I-40 Eastbound by Cary exit",
+        "401 Fayetteville building",
+        "Atlantic Ave & Hodges St",
+        "1200 S Saunders St",
+        "3000 New Bern Ave",
+        "Crabtree Creek Basin",
+        "Crabtree Valley Mall",
+    ]
+
+    for loc in test_locations:
+        res = geocoder.resolve_location_sync(loc)
+        assert res.is_resolved is True, f"Failed to resolve '{loc}'"
+        assert res.latitude != 0.0
+        assert res.longitude != 0.0
+        assert res.provider == "Local Raleigh Landmark Cache"

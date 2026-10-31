@@ -123,32 +123,32 @@ class LocalTriageEngine:
 
         # 1. Detect Incident Type
         inc_type = IncidentType.UNKNOWN.value
-        if any(w in text_lower for w in ["noise complaint", "barking", "parking complaint", "loud music", "false code", "waterflow alarm", "security alarm", "accidental"]):
+        if any(w in text_lower for w in ["noise complaint", "barking", "parking complaint", "loud music", "false code", "waterflow alarm", "security alarm", "accidental", "valve test"]):
             inc_type = IncidentType.NON_EMERGENCY.value
-        elif any(w in text_lower for w in ["shots", "gunshots", "10-33", "active shooter", "robbery", "fight", "disturbance", "altercation", "handgun"]):
+        elif any(w in text_lower for w in ["shots", "gunshots", "10-33", "active shooter", "robbery", "fight", "disturbance", "altercation", "handgun", "popping"]):
             inc_type = IncidentType.CIVIL_UNREST.value
-        elif any(w in text_lower for w in ["gas leak", "gas main", "natural gas", "gas odor", "odor of gas", "directional drilling", "10-75", "lel meter", "pipeline", "odor"]):
+        elif any(w in text_lower for w in ["gas leak", "gas main", "natural gas", "gas odor", "gas smell", "odor of gas", "directional drilling", "10-75", "lel meter", "pipeline", "odor", "rotten eggs", "sulfur smell"]):
             inc_type = IncidentType.GAS_LEAK.value
         elif any(w in text_lower for w in ["ammonia", "corrosive", "chemical fumes", "fuel spill", "diesel", "hazmat", "drum"]):
             inc_type = IncidentType.HAZMAT.value
-        elif any(w in text_lower for w in ["flood", "water rising", "skywarn", "swiftwater", "submerged", "creek", "tornado", "wall cloud", "storm damage", "live power lines", "tree down"]) or re.search(r"\b(curbs|ponding)\b", text_lower):
+        elif any(w in text_lower for w in ["flood", "water rising", "rising water", "skywarn", "swiftwater", "swift water", "water rescue", "submerged", "creek", "tornado", "wall cloud", "storm damage", "live power lines", "tree down", "gauge"]) or re.search(r"\b(curbs|ponding)\b", text_lower):
             inc_type = IncidentType.SEVERE_WEATHER.value
-        elif any(w in text_lower for w in ["10-50", "accident", "crash", "rollover", "extrication", "mva", "collision", "pinned", "pileup", "pedestrian struck", "t-bone", "rear-end"]):
+        elif any(w in text_lower for w in ["10-50", "accident", "crash", "rollover", "extrication", "mva", "collision", "pinned", "pileup", "pedestrian struck", "t-bone", "rear-end", "trauma code", "trauma alert", "red tag", "yellow tag", "life flight"]):
             inc_type = IncidentType.VEHICLE_ACCIDENT.value
-        elif any(w in text_lower for w in ["cpr", "cardiac", "echo response", "unresponsive", "10-54", "medical assist", "anaphylactic", "chest pain", "syncope", "overdose", "fall", "narcan"]):
+        elif any(w in text_lower for w in ["cpr", "cardiac", "echo response", "unresponsive", "10-54", "medical assist", "anaphylactic", "chest pain", "syncope", "overdose", "fall", "narcan", "burn victim"]):
             inc_type = IncidentType.MEDICAL_EMERGENCY.value
-        elif any(w in text_lower for w in ["fire", "flames", "smoke", "10-70", "2-alarm", "burn", "grease fire", "brush fire", "alarm"]):
+        elif any(w in text_lower for w in ["fire", "flames", "smoke", "10-70", "2-alarm", "2nd alarm", "3-alarm", "burn", "grease fire", "brush fire", "alarm", "explosion", "explosions", "working fire"]):
             inc_type = IncidentType.STRUCTURE_FIRE.value
 
         # 2. Estimate Casualty Risk (1-5)
         risk = 2
-        if inc_type == IncidentType.NON_EMERGENCY.value or "pd only" in text_lower or "property damage only" in text_lower or "tree down" in text_lower or "curbs" in text_lower or "ponding" in text_lower:
+        if inc_type == IncidentType.NON_EMERGENCY.value or "pd only" in text_lower or "property damage only" in text_lower or "tree down" in text_lower or "curbs" in text_lower or "ponding" in text_lower or "cancel units" in text_lower:
             risk = 1
-        elif any(w in text_lower for w in ["bystander cpr", "unresponsive shallow", "airbags deployed", "overturned suv", "2 pinned", "heavy extrication", "rollover with severe", "life flight", "head trauma", "shots reported", "occupants on vehicle", "swiftwater rescue", "2-alarm residential", "occupant unaccounted", "cpr in progress", "trapped"]):
+        elif any(w in text_lower for w in ["bystander cpr", "cpr in progress", "cardiac arrest", "unresponsive shallow", "airbags deployed", "overturned suv", "2 pinned", "heavy extrication", "rollover with severe", "life flight", "head trauma", "shots reported", "occupants on vehicle", "swiftwater rescue", "water rescue", "stranded on car", "callers stranded", "2-alarm residential", "occupant unaccounted", "trapped", "red tag critical", "pediatric red tag", "burn victim extraction", "active shooter"]):
             risk = 5
-        elif any(w in text_lower for w in ["10-70 comm", "flames showing roof", "smoke and visible", "10-54 medical", "anaphylactic", "exceeding gauge", "car stranded", "tornado warning", "rotating wall", "10-75 hazmat", "ruptured 4-inch", "active disturbance", "large fight in progress", "wind gusts", "multi-car pileup", "highway completely", "overdose suspected", "fumes reported in science", "2-alarm", "code 3"]):
+        elif any(w in text_lower for w in ["10-70 comm", "flames showing roof", "flames visible", "smoke and visible", "10-54 medical", "anaphylactic", "exceeding gauge", "car stranded", "tornado warning", "rotating wall", "10-75 hazmat", "ruptured 4-inch", "gas main", "explosion hazard", "active disturbance", "large fight in progress", "wind gusts", "multi-car pileup", "multi-vehicle", "highway completely", "overdose suspected", "fumes reported in science", "2-alarm", "2nd alarm", "explosion", "explosions", "swift water", "flash flood", "yellow tag", "rollover", "code 3"]):
             risk = 4
-        elif any(w in text_lower for w in ["chest pain radiating", "severe storm damage", "power lines sparking", "gas odor reported in basement", "50 gallon diesel", "chemical fumes", "armed robbery", "someone said they heard", "odor"]):
+        elif any(w in text_lower for w in ["chest pain radiating", "severe storm damage", "power lines sparking", "gas odor reported in basement", "gas smell", "rotten eggs", "50 gallon diesel", "chemical fumes", "armed robbery", "someone said they heard", "odor", "loud popping"]):
             risk = 3
 
         # 3. Estimate Credibility
@@ -165,12 +165,14 @@ class LocalTriageEngine:
         cleaned_for_loc = re.sub(r"\b10-\d{2}\b", "", text)
         patterns = [
             r"\b(Crabtree Valley Mall(?:,\s*\d+\s+Glenwood\s+Ave)?)\b",
-            r"\b(I-\d{1,3}\s+(?:EB|WB|NB|SB|Eastbound|Westbound)?\s*(?:MM|Mile\s+Marker|nr|near|Exit)[^,\.\n]+)\b",
-            r"(?:at|on|near|nr|along)\s+([A-Za-z0-9\s]+?(?:Ave|St|Rd|Blvd|Dr|Lane|Trail|Pkwy)\s+(?:&|and|nr|near)\s+[A-Za-z0-9\s]+?(?:Ave|St|Rd|Blvd|Dr|Lane|Trail|Pkwy))\b",
-            r"\b([A-Za-z0-9\s]+?(?:Ave|St|Rd|Blvd)\s+(?:&|and)\s+[A-Za-z0-9\s]+?(?:Ave|St|Rd|Blvd))\b",
-            r"(?:at|on|near|nr|along)\s+(\d{2,5}\s+[NSEW]?\s*[A-Za-z0-9\.\s]+?(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road))\b",
-            r"\b(\d{2,5}\s+[NSEW]?\s*[A-Za-z0-9\.\s]+?(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road))\b",
-            r"\b(Crabtree Creek)\b",
+            r"\b(Crabtree Creek(?: Basin)?)\b",
+            r"\b(WakeMed(?:\s+Health)?(?:\s*&\s*Hospitals)?(?:,\s*\d+\s+New\s+Bern\s+Ave)?)\b",
+            r"\b(I-\d{1,3}\s+(?:EB|WB|NB|SB|Eastbound|Westbound|Northbound|Southbound)?\s*(?:(?:MM|Mile(?:\s+Marker)?|Exit|nr|near|by|at)\s*[A-Za-z0-9\s]+?))\b",
+            r"(?:at|on|near|nr|along)\s+([A-Za-z0-9\s\.\-]+?(?:Ave|St|Rd|Blvd|Dr|Lane|Trail|Pkwy|Way)\s+(?:&|and|at|nr|near)\s+[A-Za-z0-9\s\.\-]+?(?:Ave|St|Rd|Blvd|Dr|Lane|Trail|Pkwy|Way))\b",
+            r"\b([A-Za-z0-9\s\.\-]+?(?:Ave|St|Rd|Blvd)\s+(?:&|and)\s+[A-Za-z0-9\s\.\-]+?(?:Ave|St|Rd|Blvd))\b",
+            r"(?:at|on|near|nr|along)\s+(\d{2,5}\s+[NSEW]?\s*[A-Za-z0-9\.\s]+?(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road|building|tower))\b",
+            r"\b(\d{2,5}\s+[NSEW]?\s*[A-Za-z0-9\.\s]+?(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road|building|tower))\b",
+            r"(?:at|on|near|nr|along)\s+([NSEW]?\s*[A-Za-z0-9\.\s]+?(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Trail|Pkwy|Street|Road)(?:\s+(?:near|nr|in)\s+[A-Za-z0-9\s]+)?)\b",
         ]
         for pat in patterns:
             m = re.search(pat, cleaned_for_loc, re.IGNORECASE)

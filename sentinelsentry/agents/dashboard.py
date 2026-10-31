@@ -101,6 +101,8 @@ class AlertDashboardAgent(BaseAgent):
                     corrob_text += f"[yellow]Corrob: {','.join(inc.verification.corroborating_feed_ids)}[/yellow]"
                 else:
                     corrob_text += "[dim]Solo extreme alert[/dim]"
+            elif "NEEDS REVIEW" in inc.human_status:
+                corrob_text = f"[bold yellow]{inc.human_status}[/bold yellow]"
             else:
                 corrob_text = f"[dim green]{inc.human_status}[/dim green]"
 
@@ -193,5 +195,3 @@ class AlertDashboardAgent(BaseAgent):
             f" • Corroboration:  {corrob_str}\n"
             f" • Notes:          {inc.verification.verification_notes if inc.verification else 'N/A'}\n"
         )
-
-        return table
