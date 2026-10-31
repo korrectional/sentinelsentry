@@ -164,10 +164,11 @@ class TriageAgent(BaseAgent):
         self.engine = engine or LocalTriageEngine()
         self.processed_count = 0
 
-    def step_sync(self) -> int:
-        """Process available items in bus.ingest_items."""
+    def step_sync(self, max_items: Optional[int] = None) -> int:
+        """Process available items in bus.ingest_items up to max_items if specified."""
         count = 0
-        while self.bus.ingest_items:
+        limit = max_items if max_items is not None else float("inf")
+        while self.bus.ingest_items and count < limit:
             item = self.bus.ingest_items.popleft()
             self.processed_count += 1
             count += 1

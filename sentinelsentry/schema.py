@@ -69,6 +69,14 @@ class TriageOutput(BaseModel):
                 v = 0.5
         return max(0.0, min(1.0, round(float(v), 2)))
 
+    @field_validator("location_text", mode="before")
+    @classmethod
+    def sanitize_location(cls, v: Any) -> str:
+        if v is None:
+            return "Unknown"
+        v_str = str(v).strip()
+        return v_str if v_str else "Unknown"
+
     def to_strict_json(self) -> str:
         """Serialize to compact, single-line strict JSON matching the Gemma training target."""
         return json.dumps(

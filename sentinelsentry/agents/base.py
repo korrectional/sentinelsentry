@@ -106,8 +106,9 @@ class SwarmCoordinator:
             counts["ingested"] += ing.step_sync()
 
         # 2. Triage Stage
+        worker_batch = 5 if len(self.triage_workers) > 1 else None
         for trg in self.triage_workers:
-            counts["triaged"] += trg.step_sync()
+            counts["triaged"] += trg.step_sync(max_items=worker_batch) if worker_batch else trg.step_sync()
 
         # 3. Verification Stage (risk >= 4)
         if self.verification_agent:

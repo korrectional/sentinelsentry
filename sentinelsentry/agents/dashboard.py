@@ -35,15 +35,24 @@ class AlertDashboardAgent(BaseAgent):
         }
 
     def process_incident(self, incident: EnrichedIncident) -> None:
+        is_new = incident.incident_id not in self.incidents
+        was_escalated = not is_new and self.incidents[incident.incident_id].is_escalated
         self.incidents[incident.incident_id] = incident
-        self.stats["total_processed"] += 1
 
-        if incident.is_escalated:
-            self.stats["escalated_count"] += 1
-            if incident.incident_id not in self.escalated_ids:
-                self.escalated_ids.append(incident.incident_id)
+        if is_new:
+            self.stats["total_processed"] += 1
+            if incident.is_escalated:
+                self.stats["escalated_count"] += 1
+                if incident.incident_id not in self.escalated_ids:
+                    self.escalated_ids.append(incident.incident_id)
+            else:
+                self.stats["routine_count"] += 1
         else:
-            self.stats["routine_count"] += 1
+            if incident.is_escalated and not was_escalated:
+                self.stats["escalated_count"] += 1
+                self.stats["routine_count"] = max(0, self.stats["routine_count"] - 1)
+                if incident.incident_id not in self.escalated_ids:
+                    self.escalated_ids.append(incident.incident_id)
 
         if incident.verification and incident.verification.corroborating_feed_ids:
             self.stats["corroborated_count"] += 1
