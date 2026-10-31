@@ -4,6 +4,7 @@
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](SentinelSentry_Gemma4_QLoRA.ipynb)
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Gemma%204%20LoRA-ffcc00.svg)](https://huggingface.co/sentinelsentry/gemma-4-crisis-triage)
+[![Judge Guide: Prize Categories](https://img.shields.io/badge/%F0%9F%8F%86%20Prize%20Categories-Judge%20Guide-purple.svg)](CATEGORIES.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
