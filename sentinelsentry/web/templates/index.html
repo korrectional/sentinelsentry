@@ -394,28 +394,28 @@
             <tbody class="divide-y divide-slate-800 font-mono text-xs">
               <tr>
                 <td class="p-2 text-slate-200 font-sans font-medium">Strict JSON Validity Rate</td>
-                <td class="p-2 text-center text-slate-400" id="tb-json-base">58.0%</td>
-                <td class="p-2 text-center text-emerald-400 font-bold" id="tb-json-lora">100.0%</td>
-                <td class="p-2 text-center text-cyan-400 font-bold">+42.0%</td>
+                <td class="p-2 text-center text-slate-400" id="tb-json-base">70.0% (70/100)</td>
+                <td class="p-2 text-center text-emerald-400 font-bold" id="tb-json-lora">100.0% (100/100)</td>
+                <td class="p-2 text-center text-cyan-400 font-bold" id="tb-json-delta">+30.0 pp</td>
               </tr>
               <tr>
-                <td class="p-2 text-slate-200 font-sans font-medium">Incident-Type Accuracy</td>
-                <td class="p-2 text-center text-slate-400" id="tb-acc-base">0.0%</td>
-                <td class="p-2 text-center text-emerald-400 font-bold" id="tb-acc-lora">82.0%</td>
-                <td class="p-2 text-center text-cyan-400 font-bold">+82.0%</td>
+                <td class="p-2 text-slate-200 font-sans font-medium">Incident-Type Accuracy (9-Class)</td>
+                <td class="p-2 text-center text-slate-400" id="tb-acc-base">0.0% (0/100)</td>
+                <td class="p-2 text-center text-emerald-400 font-bold" id="tb-acc-lora">94.0% (94/100)</td>
+                <td class="p-2 text-center text-cyan-400 font-bold" id="tb-acc-delta">+94.0 pp absolute</td>
               </tr>
               <tr>
                 <td class="p-2 text-slate-200 font-sans font-medium">Casualty Risk MAE (1-5 scale)</td>
-                <td class="p-2 text-center text-slate-400" id="tb-mae-base">1.96</td>
+                <td class="p-2 text-center text-slate-400" id="tb-mae-base">1.81</td>
                 <td class="p-2 text-center text-emerald-400 font-bold" id="tb-mae-lora">0.80</td>
-                <td class="p-2 text-center text-cyan-400 font-bold">-1.16 error</td>
+                <td class="p-2 text-center text-cyan-400 font-bold" id="tb-mae-delta">-1.01 error</td>
               </tr>
             </tbody>
           </table>
         </div>
 
         <p class="text-[11px] text-slate-400 italic">
-          Methodology: Zero-shot base model prompted for strict JSON frequently produces conversational preambles, syntax drift, or markdown formatting failures. The Gemma 4 LoRA adapter enforces 100% JSON schema adherence and domain categorization.
+          <span class="font-bold text-slate-300">Methodology & Taxonomy Clarification:</span> Base Gemma 4 zero-shot prompted for strict JSON produces conversational preambles ("Here is the JSON:") or non-canonical keys ("type": "fire"), yielding 0/100 exact matches to the 9-class crisis taxonomy. The fine-tuned Gemma 4 LoRA adapter (google/gemma-4-e2b-it) enforces 100% JSON schema adherence and achieves 94/100 taxonomy accuracy (+94.0 percentage points absolute gain).
         </p>
       </div>
 
@@ -1040,12 +1040,19 @@
       const b = data.base_gemma;
       const a = data.lora_adapter;
 
-      document.getElementById('tb-json-base').innerText = `${b.valid_json_rate.toFixed(1)}%`;
-      document.getElementById('tb-json-lora').innerText = `${a.valid_json_rate.toFixed(1)}%`;
-      document.getElementById('tb-acc-base').innerText = `${b.incident_accuracy.toFixed(1)}%`;
-      document.getElementById('tb-acc-lora').innerText = `${a.incident_accuracy.toFixed(1)}%`;
+      document.getElementById('tb-json-base').innerText = `${b.valid_json_rate.toFixed(1)}% (${Math.round(b.valid_json_rate)}/100)`;
+      document.getElementById('tb-json-lora').innerText = `${a.valid_json_rate.toFixed(1)}% (${Math.round(a.valid_json_rate)}/100)`;
+      document.getElementById('tb-acc-base').innerText = `${b.incident_accuracy.toFixed(1)}% (${Math.round(b.incident_accuracy)}/100)`;
+      document.getElementById('tb-acc-lora').innerText = `${a.incident_accuracy.toFixed(1)}% (${Math.round(a.incident_accuracy)}/100)`;
       document.getElementById('tb-mae-base').innerText = `${b.risk_mae.toFixed(2)}`;
       document.getElementById('tb-mae-lora').innerText = `${a.risk_mae.toFixed(2)}`;
+
+      const jsonDelta = (a.valid_json_rate - b.valid_json_rate).toFixed(1);
+      const accDelta = (a.incident_accuracy - b.incident_accuracy).toFixed(1);
+      const maeDelta = (b.risk_mae - a.risk_mae).toFixed(2);
+      if (document.getElementById('tb-json-delta')) document.getElementById('tb-json-delta').innerText = `+${jsonDelta} pp`;
+      if (document.getElementById('tb-acc-delta')) document.getElementById('tb-acc-delta').innerText = `+${accDelta} pp absolute`;
+      if (document.getElementById('tb-mae-delta')) document.getElementById('tb-mae-delta').innerText = `-${maeDelta} error`;
 
       const ctx = document.getElementById('eval-chart').getContext('2d');
       if (evalChartInstance) evalChartInstance.destroy();
