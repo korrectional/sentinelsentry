@@ -65,7 +65,7 @@ def main():
     dataset = load_dataset("json", data_files={"train": TRAIN_FILE, "validation": EVAL_FILE})
 
     # 5. Training Arguments
-    training_args = TrainingArguments(
+    args_dict = dict(
         output_dir=OUTPUT_DIR,
         per_device_train_batch_size=4,
         gradient_accumulation_steps=4,
@@ -74,12 +74,16 @@ def main():
         num_train_epochs=3,
         logging_steps=10,
         save_strategy="epoch",
-        evaluation_strategy="epoch",
         fp16=not torch.cuda.is_bf16_supported(),
         bf16=torch.cuda.is_bf16_supported(),
         optim="paged_adamw_8bit",
         report_to="none",
     )
+    # Support both transformers >= 4.41 (eval_strategy) and < 4.41 (evaluation_strategy)
+    try:
+        training_args = TrainingArguments(eval_strategy="epoch", **args_dict)
+    except TypeError:
+        training_args = TrainingArguments(evaluation_strategy="epoch", **args_dict)
 
     # 6. SFTTrainer
     trainer = SFTTrainer(

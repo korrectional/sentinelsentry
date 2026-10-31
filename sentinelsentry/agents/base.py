@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any, Callable
 from collections import deque
 
@@ -22,7 +24,7 @@ class SwarmEventBus:
     Provides deque-based synchronous access and asyncio.Queue for async workers.
     """
 
-    def __init__(self, maxsize: int = 1000):
+    def __init__(self, maxsize: int = 1000, corroboration_window_seconds: float = 600.0):
         # Queues for discrete/synchronous processing
         self.ingest_items: deque[RawFeedItem] = deque(maxlen=maxsize)
         self.verification_items: deque[EnrichedIncident] = deque(maxlen=maxsize)
@@ -32,14 +34,27 @@ class SwarmEventBus:
         # Sliding window buffer of recent raw items across feeds (for cross-feed corroboration)
         self.recent_items_buffer: List[RawFeedItem] = []
         self.max_buffer_size = 500
+        self.corroboration_window_seconds = corroboration_window_seconds
+        self._buffer_lock = threading.Lock()
+
+    def _prune_stale_items(self) -> None:
+        """Remove items older than the corroboration time window."""
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=self.corroboration_window_seconds)
+        self.recent_items_buffer = [
+            item for item in self.recent_items_buffer
+            if item.published_at >= cutoff
+        ]
 
     def record_recent_item_sync(self, item: RawFeedItem) -> None:
-        self.recent_items_buffer.append(item)
-        if len(self.recent_items_buffer) > self.max_buffer_size:
-            self.recent_items_buffer.pop(0)
+        with self._buffer_lock:
+            self.recent_items_buffer.append(item)
+            self._prune_stale_items()
+            if len(self.recent_items_buffer) > self.max_buffer_size:
+                self.recent_items_buffer.pop(0)
 
     def get_recent_items_snapshot_sync(self) -> List[RawFeedItem]:
-        return list(self.recent_items_buffer)
+        with self._buffer_lock:
+            return list(self.recent_items_buffer)
 
 
 class BaseAgent(ABC):
@@ -54,8 +69,12 @@ class BaseAgent(ABC):
         self._task: Optional[asyncio.Task] = None
 
     @abstractmethod
-    def step_sync(self) -> int:
-        """Process one batch or available items synchronously. Returns number of items processed."""
+    def step_sync(self, max_items: Optional[int] = None) -> int:
+        """Process one batch or available items synchronously. Returns number of items processed.
+        
+        Args:
+            max_items: Optional cap on items to process in this step. None means process all available.
+        """
         pass
 
 
@@ -73,6 +92,8 @@ class SwarmCoordinator:
         self.geocoder_agent: Optional[Any] = None
         self.dashboard_agent: Optional[Any] = None
         self._running: bool = False
+        self._async_running: bool = False
+        self._async_tasks: List[asyncio.Task] = []
 
     def register_ingest_agent(self, agent: Any) -> None:
         self.ingest_agents.append(agent)
@@ -107,8 +128,9 @@ class SwarmCoordinator:
             counts["ingested"] += ing.step_sync()
 
         # 2. Triage Stage
+        worker_batch = 5 if len(self.triage_workers) > 1 else None
         for trg in self.triage_workers:
-            counts["triaged"] += trg.step_sync()
+            counts["triaged"] += trg.step_sync(max_items=worker_batch) if worker_batch else trg.step_sync()
 
         # 3. Verification Stage (risk >= 4)
         if self.verification_agent:
@@ -135,37 +157,47 @@ class SwarmCoordinator:
                 break
         return round_results
 
-    async def start(self) -> None:
-        """Start asynchronous concurrent worker tasks across all agents (Mode B)."""
+    # ------------------------------------------------------------------
+    # Mode B: Asynchronous concurrent task execution
+    # ------------------------------------------------------------------
+
+    async def start(self, poll_interval: float = 0.1) -> None:
+        """Launch all registered agents as concurrent asyncio tasks.
+        
+        Each agent runs a loop calling step_sync until stopped.
+        """
+        if self._async_running or self._running:
+            logger.warning("SwarmCoordinator.start() called but already running.")
+            return
+
         self._running = True
-        self._async_tasks: List[asyncio.Task] = []
+        self._async_running = True
+        all_agents: List[Any] = list(self.ingest_agents) + list(self.triage_workers)
+        for agent in [self.verification_agent, self.geocoder_agent, self.dashboard_agent]:
+            if agent is not None:
+                all_agents.append(agent)
 
-        for ing in self.ingest_agents:
-            if hasattr(ing, "run_async_loop"):
-                self._async_tasks.append(asyncio.create_task(ing.run_async_loop()))
+        async def _agent_loop(agent: Any) -> None:
+            agent._running = True
+            while self._async_running:
+                try:
+                    agent.step_sync()
+                except Exception as exc:
+                    logger.error(f"[{agent.agent_name}] Error in async loop: {exc}")
+                await asyncio.sleep(poll_interval)
+            agent._running = False
 
-        self._coordinator_task = asyncio.create_task(self._run_coordinator_loop())
-
-    async def _run_coordinator_loop(self) -> None:
-        try:
-            while self._running:
-                self.step()
-                await asyncio.sleep(0.05)
-        except asyncio.CancelledError:
-            self._running = False
+        self._async_tasks = [asyncio.create_task(_agent_loop(a)) for a in all_agents]
+        logger.info(f"SwarmCoordinator started {len(self._async_tasks)} async agent tasks.")
 
     async def stop(self) -> None:
-        """Gracefully terminate all asynchronous worker tasks."""
+        """Signal all async agent tasks to stop and await their completion."""
+        if not self._async_running and not self._running:
+            return
         self._running = False
-        all_tasks = []
-        if hasattr(self, "_coordinator_task") and self._coordinator_task:
-            self._coordinator_task.cancel()
-            all_tasks.append(self._coordinator_task)
-        for t in getattr(self, "_async_tasks", []):
-            t.cancel()
-            all_tasks.append(t)
-        for ing in self.ingest_agents:
-            if hasattr(ing, "_running"):
-                ing._running = False
-        if all_tasks:
-            await asyncio.gather(*all_tasks, return_exceptions=True)
+        self._async_running = False
+        for task in self._async_tasks:
+            task.cancel()
+        await asyncio.gather(*self._async_tasks, return_exceptions=True)
+        self._async_tasks.clear()
+        logger.info("SwarmCoordinator stopped all async agent tasks.")

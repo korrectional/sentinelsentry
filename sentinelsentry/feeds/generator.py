@@ -123,13 +123,13 @@ class RSSFeedGenerator:
         for it in items:
             it_rfc822 = email.utils.format_datetime(it["pub_date"])
             xml_lines.append("    <item>")
-            xml_lines.append(f"      <title>{escape(it['title'])}</title>")
-            xml_lines.append(f"      <link>{escape(it['link'])}</link>")
-            xml_lines.append(f"      <description>{escape(it['raw_text'])}</description>")
+            xml_lines.append(f"      <title>{escape(str(it.get('title') or ''))}</title>")
+            xml_lines.append(f"      <link>{escape(str(it.get('link') or ''))}</link>")
+            xml_lines.append(f"      <description>{escape(str(it.get('raw_text') or ''))}</description>")
             xml_lines.append(f"      <pubDate>{it_rfc822}</pubDate>")
-            xml_lines.append(f'      <guid isPermaLink="false">{escape(it["guid"])}</guid>')
+            xml_lines.append(f'      <guid isPermaLink="false">{escape(str(it.get("guid") or ""))}</guid>')
             if it.get("scenario_id"):
-                xml_lines.append(f"      <category>{escape(it['scenario_id'])}</category>")
+                xml_lines.append(f"      <category>{escape(str(it.get('scenario_id') or ''))}</category>")
             xml_lines.append("    </item>")
 
         xml_lines.append("  </channel>")

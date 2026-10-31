@@ -27,6 +27,7 @@ class AlertDashboardAgent(BaseAgent):
         self.console = console or Console(legacy_windows=False, force_terminal=True)
         self.incidents: Dict[str, EnrichedIncident] = {}
         self.escalated_ids: List[str] = []
+        self._corroborated_ids: set = set()
         self.stats = {
             "total_processed": 0,
             "escalated_count": 0,
@@ -35,22 +36,34 @@ class AlertDashboardAgent(BaseAgent):
         }
 
     def process_incident(self, incident: EnrichedIncident) -> None:
+        is_new = incident.incident_id not in self.incidents
+        was_escalated = not is_new and self.incidents[incident.incident_id].is_escalated
         self.incidents[incident.incident_id] = incident
-        self.stats["total_processed"] += 1
 
-        if incident.is_escalated:
-            self.stats["escalated_count"] += 1
-            if incident.incident_id not in self.escalated_ids:
-                self.escalated_ids.append(incident.incident_id)
+        if is_new:
+            self.stats["total_processed"] += 1
+            if incident.is_escalated:
+                self.stats["escalated_count"] += 1
+                if incident.incident_id not in self.escalated_ids:
+                    self.escalated_ids.append(incident.incident_id)
+            else:
+                self.stats["routine_count"] += 1
         else:
-            self.stats["routine_count"] += 1
+            if incident.is_escalated and not was_escalated:
+                self.stats["escalated_count"] += 1
+                self.stats["routine_count"] = max(0, self.stats["routine_count"] - 1)
+                if incident.incident_id not in self.escalated_ids:
+                    self.escalated_ids.append(incident.incident_id)
 
         if incident.verification and incident.verification.corroborating_feed_ids:
-            self.stats["corroborated_count"] += 1
+            if incident.incident_id not in self._corroborated_ids:
+                self._corroborated_ids.add(incident.incident_id)
+                self.stats["corroborated_count"] += 1
 
-    def step_sync(self) -> int:
+    def step_sync(self, max_items: Optional[int] = None) -> int:
         count = 0
-        while self.bus.dashboard_items:
+        limit = max_items if max_items is not None else float("inf")
+        while self.bus.dashboard_items and count < limit:
             incident = self.bus.dashboard_items.popleft()
             self.process_incident(incident)
             count += 1
@@ -61,14 +74,15 @@ class AlertDashboardAgent(BaseAgent):
             title="[ALERT] SentinelSentry: Live Dispatcher Decision-Support Board",
             header_style="bold cyan",
             show_lines=True,
+            expand=False,
         )
-        table.add_column("Time", justify="center", style="dim", width=10)
-        table.add_column("Feed", justify="center", width=14)
-        table.add_column("Incident Type", style="bold", width=22)
-        table.add_column("Risk", justify="center", width=8)
-        table.add_column("Cred", justify="center", width=8)
-        table.add_column("Location", width=25)
-        table.add_column("Status / Corroboration", width=35)
+        table.add_column("Time", justify="center", style="dim", min_width=8, max_width=10, no_wrap=True)
+        table.add_column("Feed", justify="center", min_width=10, max_width=15, no_wrap=True)
+        table.add_column("Incident Type", style="bold", min_width=14, max_width=22)
+        table.add_column("Risk", justify="center", min_width=7, max_width=9, no_wrap=True)
+        table.add_column("Cred", justify="center", min_width=5, max_width=6, no_wrap=True)
+        table.add_column("Location", min_width=14, max_width=24)
+        table.add_column("Status / Corroboration", min_width=16, max_width=30)
 
         sorted_incidents = sorted(
             self.incidents.values(),
@@ -92,15 +106,16 @@ class AlertDashboardAgent(BaseAgent):
             cred_str = f"[bold]{cred_val:.2f}[/bold]" if cred_val >= 0.8 else f"{cred_val:.2f}"
 
             loc_str = inc.geocoded.display_name if (inc.geocoded and inc.geocoded.is_resolved) else inc.triage.location_text
-            if len(loc_str) > 24:
-                loc_str = loc_str[:22] + ".."
+            if len(loc_str) > 23:
+                loc_str = loc_str[:21] + ".."
 
             if inc.is_escalated:
-                corrob_text = f"[bold red]** ESCALATED **[/bold red]\n"
+                corrob_text = "[bold red]** ESCALATED **[/bold red]"
                 if inc.verification and inc.verification.corroborating_feed_ids:
-                    corrob_text += f"[yellow]Corrob: {','.join(inc.verification.corroborating_feed_ids)}[/yellow]"
+                    corrobs = ", ".join(inc.verification.corroborating_feed_ids)
+                    corrob_text += f"\n[yellow]Corrob: {corrobs}[/yellow]"
                 else:
-                    corrob_text += "[dim]Solo extreme alert[/dim]"
+                    corrob_text += "\n[dim]Solo extreme alert[/dim]"
             elif "NEEDS REVIEW" in inc.human_status:
                 corrob_text = f"[bold yellow]{inc.human_status}[/bold yellow]"
             else:

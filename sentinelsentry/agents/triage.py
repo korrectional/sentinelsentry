@@ -98,7 +98,6 @@ class LocalTriageEngine:
         outputs = self._hf_model.generate(
             **inputs,
             max_new_tokens=128,
-            temperature=0.1,
             do_sample=False,
             pad_token_id=self._hf_tokenizer.eos_token_id,
         )
@@ -123,32 +122,59 @@ class LocalTriageEngine:
 
         # 1. Detect Incident Type
         inc_type = IncidentType.UNKNOWN.value
-        if any(w in text_lower for w in ["noise complaint", "barking", "parking complaint", "loud music", "false code", "waterflow alarm", "security alarm", "accidental", "valve test"]):
-            inc_type = IncidentType.NON_EMERGENCY.value
-        elif any(w in text_lower for w in ["shots", "gunshots", "10-33", "active shooter", "robbery", "fight", "disturbance", "altercation", "handgun", "popping"]):
-            inc_type = IncidentType.CIVIL_UNREST.value
-        elif any(w in text_lower for w in ["gas leak", "gas main", "natural gas", "gas odor", "gas smell", "odor of gas", "directional drilling", "10-75", "lel meter", "pipeline", "odor", "rotten eggs", "sulfur smell"]):
-            inc_type = IncidentType.GAS_LEAK.value
-        elif any(w in text_lower for w in ["ammonia", "corrosive", "chemical fumes", "fuel spill", "diesel", "hazmat", "drum"]):
-            inc_type = IncidentType.HAZMAT.value
+        if any(w in text_lower for w in ["fire", "flames", "smoke", "10-70", "alarm", "burn"]):
+            if "alarm" in text_lower and any(w in text_lower for w in ["waterflow", "accidental", "false", "test", "maintenance", "valve test"]):
+                inc_type = IncidentType.NON_EMERGENCY.value
+            else:
+                inc_type = IncidentType.STRUCTURE_FIRE.value
+        elif (
+            any(w in text_lower for w in ["10-50", "accident", "crash", "rollover", "extrication", "mva", "collision", "pinned"])
+            or ("trauma" in text_lower and any(hw in text_lower for hw in ["i-40", "i-440", "i-540", "i-85", "highway", "hwy", "exit", "mile marker", "mm "]))
+        ):
+            inc_type = IncidentType.VEHICLE_ACCIDENT.value
         elif any(w in text_lower for w in ["flood", "water rising", "rising water", "skywarn", "swiftwater", "swift water", "water rescue", "submerged", "creek", "tornado", "wall cloud", "storm damage", "live power lines", "tree down", "gauge"]) or re.search(r"\b(curbs|ponding)\b", text_lower):
             inc_type = IncidentType.SEVERE_WEATHER.value
-        elif any(w in text_lower for w in ["10-50", "accident", "crash", "rollover", "extrication", "mva", "collision", "pinned", "pileup", "pedestrian struck", "t-bone", "rear-end", "trauma code", "trauma alert", "red tag", "yellow tag", "life flight"]):
-            inc_type = IncidentType.VEHICLE_ACCIDENT.value
-        elif any(w in text_lower for w in ["cpr", "cardiac", "echo response", "unresponsive", "10-54", "medical assist", "anaphylactic", "chest pain", "syncope", "overdose", "fall", "narcan", "burn victim"]):
+        elif any(w in text_lower for w in ["chemical", "ammonia", "corrosive", "diesel fuel", "fuel spill", "hazardous material", "fumes reported", "drum"]):
+            inc_type = IncidentType.HAZMAT.value
+        elif any(w in text_lower for w in ["gas leak", "gas main", "natural gas", "gas odor", "gas smell", "odor of gas", "directional drilling", "10-75", "lel meter", "pipeline", "odor", "rotten eggs", "sulfur smell"]):
+            inc_type = IncidentType.GAS_LEAK.value
+        elif any(w in text_lower for w in ["shots", "gunshots", "10-33", "active shooter", "weapon", "robbery", "fight", "disturbance", "altercation", "handgun", "popping"]):
+            inc_type = IncidentType.CIVIL_UNREST.value
+        elif any(w in text_lower for w in [
+            "cpr", "cardiac", "echo response", "unresponsive", "10-54", "medical",
+            "trauma", "patient", "patients", "pediatric", "life flight", "overdose",
+            "ambulance", "unconscious", "stroke", "respiratory", "ems dispatch",
+            "red tag", "yellow tag", "syncope", "fall", "narcan", "burn victim", "anaphylactic", "chest pain"
+        ]):
             inc_type = IncidentType.MEDICAL_EMERGENCY.value
-        elif any(w in text_lower for w in ["fire", "flames", "smoke", "10-70", "2-alarm", "2nd alarm", "3-alarm", "burn", "grease fire", "brush fire", "alarm", "explosion", "explosions", "working fire"]):
-            inc_type = IncidentType.STRUCTURE_FIRE.value
+        elif any(w in text_lower for w in ["noise complaint", "barking", "parking complaint", "loud music", "false code"]):
+            inc_type = IncidentType.NON_EMERGENCY.value
 
         # 2. Estimate Casualty Risk (1-5)
         risk = 2
-        if inc_type == IncidentType.NON_EMERGENCY.value or "pd only" in text_lower or "property damage only" in text_lower or "tree down" in text_lower or "curbs" in text_lower or "ponding" in text_lower or "cancel units" in text_lower:
+        if inc_type == IncidentType.NON_EMERGENCY.value or "pd only" in text_lower or "property damage only" in text_lower or "no injuries" in text_lower or "tree down" in text_lower or "curbs" in text_lower or "ponding" in text_lower or "cancel units" in text_lower:
             risk = 1
-        elif any(w in text_lower for w in ["bystander cpr", "cpr in progress", "cardiac arrest", "unresponsive shallow", "airbags deployed", "overturned suv", "2 pinned", "heavy extrication", "rollover with severe", "life flight", "head trauma", "shots reported", "occupants on vehicle", "swiftwater rescue", "water rescue", "stranded on car", "callers stranded", "2-alarm residential", "occupant unaccounted", "trapped", "red tag critical", "pediatric red tag", "burn victim extraction", "active shooter"]):
+        elif any(w in text_lower for w in [
+            "cpr in progress", "cardiac arrest", "unresponsive shallow", "bystander cpr", "life flight",
+            "unaccounted for", "occupant unaccounted", "red tag", "ped trapped", "jaws in service",
+            "trapped", "heavy extrication", "collapse zone", "multi-vehicle rollover", "rollover with severe",
+            "swiftwater rescue", "water rescue", "stranded on car", "callers stranded", "2-alarm residential",
+            "red tag critical", "pediatric red tag", "burn victim extraction", "active shooter", "shots reported"
+        ]):
             risk = 5
-        elif any(w in text_lower for w in ["10-70 comm", "flames showing roof", "flames visible", "smoke and visible", "10-54 medical", "anaphylactic", "exceeding gauge", "car stranded", "tornado warning", "rotating wall", "10-75 hazmat", "ruptured 4-inch", "gas main", "explosion hazard", "active disturbance", "large fight in progress", "wind gusts", "multi-car pileup", "multi-vehicle", "highway completely", "overdose suspected", "fumes reported in science", "2-alarm", "2nd alarm", "explosion", "explosions", "swift water", "flash flood", "yellow tag", "rollover", "code 3"]):
+        elif any(w in text_lower for w in [
+            "injuries", "medic en route", "code 3", "2-alarm", "2nd alarm", "swiftwater", "swift water",
+            "flash flood", "lel meters reading 70%", "lel meter", "explosion", "explosions", "gas main",
+            "flames showing roof", "flames visible", "smoke and visible", "10-70 comm", "10-54 medical",
+            "10-75 hazmat", "ruptured 4-inch", "active disturbance", "large fight in progress", "wind gusts",
+            "multi-car pileup", "multi-vehicle", "highway completely", "overdose suspected", "yellow tag", "rollover", "trauma"
+        ]):
             risk = 4
-        elif any(w in text_lower for w in ["chest pain radiating", "severe storm damage", "power lines sparking", "gas odor reported in basement", "gas smell", "rotten eggs", "50 gallon diesel", "chemical fumes", "armed robbery", "someone said they heard", "odor", "loud popping"]):
+        elif any(w in text_lower for w in [
+            "standstill", "odor", "popping", "gas leak", "gas smell", "rotten eggs", "chest pain radiating",
+            "severe storm damage", "power lines sparking", "gas odor reported in basement", "50 gallon diesel",
+            "chemical fumes", "armed robbery", "someone said they heard", "loud popping"
+        ]):
             risk = 3
 
         # 3. Estimate Credibility
@@ -162,17 +188,21 @@ class LocalTriageEngine:
 
         # 4. Extract Location Text
         loc = "Unknown"
-        cleaned_for_loc = re.sub(r"\b10-\d{2}\b", "", text)
+        cleaned_for_loc = re.sub(r"\b10-\d{2}\b", " ", text, flags=re.IGNORECASE)
+        cleaned_for_loc = re.sub(r"\bCODE\s*\d+\b", " ", cleaned_for_loc, flags=re.IGNORECASE)
+
         patterns = [
             r"\b(Crabtree Valley Mall(?:,\s*\d+\s+Glenwood\s+Ave)?)\b",
             r"\b(Crabtree Creek(?: Basin)?)\b",
             r"\b(WakeMed(?:\s+Health)?(?:\s*&\s*Hospitals)?(?:,\s*\d+\s+New\s+Bern\s+Ave)?)\b",
-            r"\b(I-\d{1,3}\s+(?:EB|WB|NB|SB|Eastbound|Westbound|Northbound|Southbound)?\s*(?:(?:MM|Mile(?:\s+Marker)?|Exit|nr|near|by|at)\s*[A-Za-z0-9\s]+?))\b",
-            r"(?:at|on|near|nr|along)\s+([A-Za-z0-9\s\.\-]+?(?:Ave|St|Rd|Blvd|Dr|Lane|Trail|Pkwy|Way)\s+(?:&|and|at|nr|near)\s+[A-Za-z0-9\s\.\-]+?(?:Ave|St|Rd|Blvd|Dr|Lane|Trail|Pkwy|Way))\b",
+            r"\b(I-\d{1,3}\s+(?:EB|WB|NB|SB|Eastbound|Westbound|Northbound|Southbound)?\s*(?:(?:MM|Mile(?:\s+Marker)?|Exit|nr|near|by|at)\s*[\w\s]+?))\b(?=(?:\s+completely|\s+stopped|\s+traffic|,|\.|\n|$))",
+            r"\b(I-\d{1,3}\s+(?:EB|WB|NB|SB|Eastbound|Westbound)?\s*(?:(?:at|nr|near|Mile|MM)\s*[\d\w\s]+)?)\b",
+            r"(?:at|on|near|nr|along)\s+([A-Za-z0-9\s\.\-]+?(?:Ave|Avenue|St|Street|Rd|Road|Blvd|Boulevard|Dr|Drive|Lane|Trail|Pkwy|Way|Hwy|Highway)\s+(?:&|and|at|nr|near|/)\s+[A-Za-z0-9\s\.\-]+?(?:Ave|Avenue|St|Street|Rd|Road|Blvd|Boulevard|Dr|Drive|Lane|Trail|Pkwy|Way|Hwy|Highway))\b",
             r"\b([A-Za-z0-9\s\.\-]+?(?:Ave|St|Rd|Blvd)\s+(?:&|and)\s+[A-Za-z0-9\s\.\-]+?(?:Ave|St|Rd|Blvd))\b",
-            r"(?:at|on|near|nr|along)\s+(\d{2,5}\s+[NSEW]?\s*[A-Za-z0-9\.\s]+?(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road|building|tower))\b",
-            r"\b(\d{2,5}\s+[NSEW]?\s*[A-Za-z0-9\.\s]+?(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road|building|tower))\b",
-            r"(?:at|on|near|nr|along)\s+([NSEW]?\s*[A-Za-z0-9\.\s]+?(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Trail|Pkwy|Street|Road)(?:\s+(?:near|nr|in)\s+[A-Za-z0-9\s]+)?)\b",
+            r"(?:at|on|near|nr|along)\s+(\d{1,5}\s+(?:[NSEW]\.?\s+)?[A-Za-z0-9]+(?:\s+[A-Za-z0-9]+){0,2}\s+(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road|building|tower))\b",
+            r"\b(\d{1,5}\s+(?:[NSEW]\.?\s+)?[A-Za-z0-9]+(?:\s+[A-Za-z0-9]+){0,2}\s+(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road|building|tower))\b",
+            r"(?:at|on|near|nr|along)\s+([NSEW]?\s*[A-Za-z0-9\.\s]+?(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Trail|Pkwy|Street|Road)(?:\s+(?:near|nr|in)\s+(?:downtown\s+)?[A-Za-z]+)?)\b",
+            r"\b((?:[NSEW]\.?\s+)?[A-Za-z0-9]+(?:\s+[A-Za-z0-9]+){0,1}\s+(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road|Boulevard|Avenue))\b",
         ]
         for pat in patterns:
             m = re.search(pat, cleaned_for_loc, re.IGNORECASE)
@@ -181,6 +211,8 @@ class LocalTriageEngine:
                 if loc.isupper():
                     loc = loc.title()
                 break
+
+        loc = loc.strip(" ,.-;")
 
         return TriageOutput(
             incident_type=inc_type,
@@ -201,10 +233,11 @@ class TriageAgent(BaseAgent):
         self.engine = engine or LocalTriageEngine()
         self.processed_count = 0
 
-    def step_sync(self) -> int:
-        """Process available items in bus.ingest_items."""
+    def step_sync(self, max_items: Optional[int] = None) -> int:
+        """Process available items in bus.ingest_items up to max_items if specified."""
         count = 0
-        while self.bus.ingest_items:
+        limit = max_items if max_items is not None else float("inf")
+        while self.bus.ingest_items and count < limit:
             item = self.bus.ingest_items.popleft()
             self.processed_count += 1
             count += 1

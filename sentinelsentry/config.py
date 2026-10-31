@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Dict, Any, List
-from pydantic import BaseModel, Field
+from typing import Dict, Any, List, Optional
+from pydantic import BaseModel, Field, model_validator
 
 
 class FeedConfig(BaseModel):
@@ -23,11 +23,22 @@ class FeedConfig(BaseModel):
 class Settings(BaseModel):
     # Project paths
     BASE_DIR: Path = Path(__file__).resolve().parent.parent
-    _LOCAL_DATA: Path = BASE_DIR / "data"
-    _TEMP_DATA: Path = Path(os.environ.get("TEMP", "/tmp")) / "sentinelsentry_data"
-    DATA_DIR: Path = _LOCAL_DATA if _LOCAL_DATA.exists() else _TEMP_DATA
-    FEEDS_DIR: Path = BASE_DIR / "feeds"
-    TESTS_DIR: Path = BASE_DIR / "tests"
+    DATA_DIR: Optional[Path] = None
+    FEEDS_DIR: Optional[Path] = None
+    TESTS_DIR: Optional[Path] = None
+
+    @model_validator(mode='after')
+    def _resolve_dynamic_paths(self) -> Settings:
+        """Resolve derived paths at instance creation time (not class definition time)."""
+        if self.DATA_DIR is None:
+            local_data = self.BASE_DIR / "data"
+            temp_data = Path(os.environ.get("TEMP", "/tmp")) / "sentinelsentry_data"
+            self.DATA_DIR = local_data if local_data.exists() else temp_data
+        if self.FEEDS_DIR is None:
+            self.FEEDS_DIR = self.BASE_DIR / "feeds"
+        if self.TESTS_DIR is None:
+            self.TESTS_DIR = self.BASE_DIR / "tests"
+        return self
 
     # Model & LoRA settings
     BASE_MODEL_NAME: str = "google/gemma-2b-it"

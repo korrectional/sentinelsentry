@@ -59,7 +59,12 @@ class GeocoderAgent(BaseAgent):
 
     def _lookup_local_cache(self, location_text: str) -> Optional[GeocodedLocation]:
         norm = location_text.lower().strip()
+        generic_tokens = {"st", "ave", "rd", "blvd", "dr", "lane", "way", "street", "road", "avenue", "near", "at", "and"}
+        tokens = set(norm.replace(",", " ").replace(".", " ").replace("&", " ").split())
+        significant_tokens = tokens - generic_tokens
+
         for key, (lat, lon, display) in LOCAL_LANDMARK_CACHE.items():
+            # Match 1: Full landmark key appears inside the location text or vice versa
             if key in norm or (len(norm) >= 6 and norm in key):
                 return GeocodedLocation(
                     location_text=location_text,
@@ -69,6 +74,18 @@ class GeocoderAgent(BaseAgent):
                     is_resolved=True,
                     provider="Local Raleigh Landmark Cache",
                 )
+            # Match 2: Query contains multiple significant non-generic tokens and ALL appear in key
+            # Require at least 2 significant tokens to prevent false positives from single-token matches
+            if len(significant_tokens) >= 2 and len(norm) >= 5:
+                if all(tok in key for tok in significant_tokens):
+                    return GeocodedLocation(
+                        location_text=location_text,
+                        latitude=lat,
+                        longitude=lon,
+                        display_name=display,
+                        is_resolved=True,
+                        provider="Local Raleigh Landmark Cache",
+                    )
         return None
 
     def _query_nominatim(self, location_text: str) -> Optional[GeocodedLocation]:
@@ -99,13 +116,14 @@ class GeocoderAgent(BaseAgent):
                         provider="OpenStreetMap Nominatim",
                     )
         except Exception as e:
-            logger.debug(f"Nominatim lookup failed ({e})")
+            logger.debug(f"Nominatim lookup failed for '{location_text}': {e}")
         return None
 
     def resolve_location_sync(self, location_text: str) -> GeocodedLocation:
-        if not location_text or location_text.lower() == "unknown":
+        """Resolve location_text via local landmark cache, then Nominatim, then fallback."""
+        if not location_text or location_text.strip().lower() == "unknown":
             return GeocodedLocation(
-                location_text="Unknown",
+                location_text=location_text or "Unknown",
                 latitude=None,
                 longitude=None,
                 display_name="Unknown Location",
@@ -138,9 +156,10 @@ class GeocoderAgent(BaseAgent):
         self._memory_cache[location_text] = unresolved
         return unresolved
 
-    def step_sync(self) -> int:
+    def step_sync(self, max_items: Optional[int] = None) -> int:
         count = 0
-        while self.bus.geocoding_items:
+        limit = max_items if max_items is not None else float("inf")
+        while self.bus.geocoding_items and count < limit:
             incident = self.bus.geocoding_items.popleft()
             geocoded = self.resolve_location_sync(incident.triage.location_text)
             incident.geocoded = geocoded

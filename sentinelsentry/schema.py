@@ -32,6 +32,19 @@ class TriageOutput(BaseModel):
         ...,
         description="Classified incident category (e.g. Structure Fire, Vehicle Accident, Flooding)"
     )
+
+    @field_validator("incident_type", mode="before")
+    @classmethod
+    def normalize_incident_type(cls, v: Any) -> str:
+        """Normalize recognized incident type strings to canonical enum values."""
+        if isinstance(v, IncidentType):
+            return v.value
+        v_str = str(v).strip()
+        for member in IncidentType:
+            if v_str.lower() == member.value.lower():
+                return member.value
+        return v_str  # allow free-form string for model output flexibility
+
     casualty_risk_level: int = Field(
         ...,
         ge=1,
@@ -69,6 +82,14 @@ class TriageOutput(BaseModel):
                 v = 0.5
         return max(0.0, min(1.0, round(float(v), 2)))
 
+    @field_validator("location_text", mode="before")
+    @classmethod
+    def sanitize_location(cls, v: Any) -> str:
+        if v is None:
+            return "Unknown"
+        v_str = str(v).strip()
+        return v_str if v_str else "Unknown"
+
     def to_strict_json(self) -> str:
         """Serialize to compact, single-line strict JSON matching the Gemma training target."""
         return json.dumps(
@@ -78,7 +99,7 @@ class TriageOutput(BaseModel):
                 "credibility_score": self.credibility_score,
                 "location_text": self.location_text,
             },
-            separators=(",", ": ")
+            separators=(", ", ": ")
         )
 
 
@@ -142,6 +163,6 @@ class EnrichedIncident(BaseModel):
 
     @property
     def summary_line(self) -> str:
-        loc = self.geocoded.display_name if (self.geocoded and self.geocoded.is_resolved) else self.triage.location_text
+        loc = (self.geocoded.display_name if (self.geocoded and self.geocoded.is_resolved and self.geocoded.display_name) else self.triage.location_text) or "Unknown"
         esc = "[ESCALATED]" if self.is_escalated else "[ROUTINE]"
         return f"{esc} [{self.triage.incident_type}] Risk:{self.triage.casualty_risk_level}/5 | Cred:{self.triage.credibility_score:.2f} | Loc:{loc}"

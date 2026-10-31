@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from sentinelsentry.config import settings
 from sentinelsentry.schema import RawFeedItem, EnrichedIncident, CorroborationReport
@@ -79,6 +79,7 @@ class VerificationAgent(BaseAgent):
         target_keywords = self.TYPE_CRISIS_KEYWORDS.get(incident.triage.incident_type, set())
 
         corroborating = []
+        seen_cand_feeds = set()
         for cand in recent_items:
             if cand.feed_id == target_feed:
                 continue
@@ -106,7 +107,11 @@ class VerificationAgent(BaseAgent):
 
             if loc_overlap and (same_scenario or semantic_overlap or is_official_cross_call):
                 weight = 0.25 if cand.feed_id in ("cad_police", "fire_rescue", "ems_scanner") else 0.15
-                corroborating.append((cand, weight))
+                if cand.feed_id not in seen_cand_feeds:
+                    seen_cand_feeds.add(cand.feed_id)
+                    corroborating.append((cand, weight))
+                else:
+                    corroborating.append((cand, 0.0))
 
         return corroborating
 
@@ -149,7 +154,9 @@ class VerificationAgent(BaseAgent):
                 verified_at=datetime.now(timezone.utc),
             )
 
-        incident.triage.credibility_score = adjusted_cred
+        # Update triage with adjusted credibility via copy (never mutate in-place;
+        # re-verification of the same incident would otherwise cause runaway inflation)
+        incident.triage = incident.triage.model_copy(update={"credibility_score": adjusted_cred})
         incident.verification = report
 
         is_unknown_loc = incident.triage.location_text.lower().strip() == "unknown"
@@ -174,9 +181,10 @@ class VerificationAgent(BaseAgent):
         self.verifications_completed += 1
         return incident
 
-    def step_sync(self) -> int:
+    def step_sync(self, max_items: Optional[int] = None) -> int:
         count = 0
-        while self.bus.verification_items:
+        limit = max_items if max_items is not None else float("inf")
+        while self.bus.verification_items and count < limit:
             incident = self.bus.verification_items.popleft()
             verified = self.verify_incident_sync(incident)
             self.bus.geocoding_items.append(verified)

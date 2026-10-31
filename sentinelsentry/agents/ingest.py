@@ -32,7 +32,7 @@ class IngestAgent(BaseAgent):
         self.custom_fetcher = custom_fetcher
         self.total_ingested = 0
 
-    def step_sync(self) -> int:
+    def step_sync(self, max_items: Optional[int] = None) -> int:
         """Synchronously poll the feed (using custom_fetcher, feed URL, or XML parser) and push new items."""
         if self.custom_fetcher:
             raw_items = self.custom_fetcher()
@@ -50,7 +50,10 @@ class IngestAgent(BaseAgent):
             return 0
 
         count = 0
+        limit = max_items if max_items is not None else float("inf")
         for item in raw_items:
+            if count >= limit:
+                break
             if not self.client.dedup_cache.is_seen(item.id):
                 self.client.dedup_cache.mark_seen(item.id)
                 self.total_ingested += 1

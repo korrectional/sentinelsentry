@@ -7,8 +7,14 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from pathlib import Path
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
+
+# Ensure UTF-8 output on Windows terminals
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 from rich.console import Console
 from rich.table import Table
 
@@ -61,7 +67,10 @@ class BenchmarkRunner:
 
     def _load_test_data(self) -> None:
         if not self.test_file_path.exists():
-            raise FileNotFoundError(f"Test file not found: {self.test_file_path}")
+            from sentinelsentry.data.generate_dataset import generate_and_save_all
+            logger.info(f"Test file not found. Auto-generating test data to {self.test_file_path.parent}...")
+            generate_and_save_all(self.test_file_path.parent)
+
         with open(self.test_file_path, "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
@@ -72,6 +81,8 @@ class BenchmarkRunner:
         adapter_engine = LocalTriageEngine()
 
         total = len(self.test_samples)
+        if total == 0:
+            raise ValueError(f"No test samples found in '{self.test_file_path}'.")
         base_valid_json = 0
         base_type_correct = 0
         base_risk_diffs = []
