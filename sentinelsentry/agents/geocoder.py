@@ -62,8 +62,9 @@ class GeocoderAgent(BaseAgent):
                     is_resolved=True,
                     provider="Local Raleigh Landmark Cache",
                 )
-            # Match 2: Query contains significant non-generic tokens and matches key (e.g. "401 fayetteville" or "crabtree mall")
-            if significant_tokens and len(norm) >= 5:
+            # Match 2: Query contains multiple significant non-generic tokens and ALL appear in key
+            # Require at least 2 significant tokens to prevent false positives from single-token matches
+            if len(significant_tokens) >= 2 and len(norm) >= 5:
                 if all(tok in key for tok in significant_tokens):
                     return GeocodedLocation(
                         location_text=location_text,
@@ -105,9 +106,10 @@ class GeocoderAgent(BaseAgent):
         self._memory_cache[location_text] = unresolved
         return unresolved
 
-    def step_sync(self) -> int:
+    def step_sync(self, max_items: Optional[int] = None) -> int:
         count = 0
-        while self.bus.geocoding_items:
+        limit = max_items if max_items is not None else float("inf")
+        while self.bus.geocoding_items and count < limit:
             incident = self.bus.geocoding_items.popleft()
             geocoded = self.resolve_location_sync(incident.triage.location_text)
             incident.geocoded = geocoded

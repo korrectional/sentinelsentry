@@ -32,6 +32,19 @@ class TriageOutput(BaseModel):
         ...,
         description="Classified incident category (e.g. Structure Fire, Vehicle Accident, Flooding)"
     )
+
+    @field_validator("incident_type", mode="before")
+    @classmethod
+    def normalize_incident_type(cls, v: Any) -> str:
+        """Normalize recognized incident type strings to canonical enum values."""
+        if isinstance(v, IncidentType):
+            return v.value
+        v_str = str(v).strip()
+        for member in IncidentType:
+            if v_str.lower() == member.value.lower():
+                return member.value
+        return v_str  # allow free-form string for model output flexibility
+
     casualty_risk_level: int = Field(
         ...,
         ge=1,
@@ -86,7 +99,7 @@ class TriageOutput(BaseModel):
                 "credibility_score": self.credibility_score,
                 "location_text": self.location_text,
             },
-            separators=(",", ": ")
+            separators=(", ", ": ")
         )
 
 

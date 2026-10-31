@@ -82,7 +82,21 @@ class FeedServerManager:
         return created_guids
 
 
-feed_manager = FeedServerManager()
+def _create_feed_manager() -> FeedServerManager:
+    """Factory for the global FeedServerManager singleton."""
+    return FeedServerManager()
+
+
+feed_manager = _create_feed_manager()
+
+
+def reset_feed_manager() -> FeedServerManager:
+    """Reset the global feed manager to a fresh state. Use for test isolation."""
+    global feed_manager
+    feed_manager = _create_feed_manager()
+    return feed_manager
+
+
 app = FastAPI(title="SentinelSentry Simulated Crisis Feed Server", version="0.1.0")
 
 

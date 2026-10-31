@@ -68,7 +68,6 @@ class LocalTriageEngine:
         outputs = self._hf_model.generate(
             **inputs,
             max_new_tokens=128,
-            temperature=0.1,
             do_sample=False,
             pad_token_id=self._hf_tokenizer.eos_token_id,
         )
@@ -102,6 +101,8 @@ class LocalTriageEngine:
             inc_type = IncidentType.VEHICLE_ACCIDENT.value
         elif any(w in text_lower for w in ["flood", "water rising", "skywarn", "swiftwater", "submerged", "creek overflowing"]):
             inc_type = IncidentType.SEVERE_WEATHER.value
+        elif any(w in text_lower for w in ["chemical", "ammonia", "corrosive", "diesel fuel", "fuel spill", "hazardous material", "fumes reported"]):
+            inc_type = IncidentType.HAZMAT.value
         elif any(w in text_lower for w in ["gas leak", "hazmat", "10-75", "lel meter", "pipeline", "odor of gas"]):
             inc_type = IncidentType.GAS_LEAK.value
         elif any(w in text_lower for w in ["cpr", "cardiac", "echo response", "unresponsive", "10-54", "medical"]):

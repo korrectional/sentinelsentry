@@ -121,8 +121,11 @@ def generate_synthetic_samples(count: int, seed: int = 42) -> List[Dict[str, Any
         if random.random() < 0.15:
             raw_text = raw_text.replace(" at ", " nr ").replace(" Street", " St").replace(" Avenue", " Ave")
 
-        # Slight jitter to risk and credibility
-        risk = max(1, min(5, base_risk + random.choice([-1, 0, 0, 0, 1]) if base_risk not in (1, 5) else base_risk))
+        # Slight jitter to risk and credibility (no jitter at boundary values 1 and 5)
+        if base_risk in (1, 5):
+            risk = base_risk
+        else:
+            risk = max(1, min(5, base_risk + random.choice([-1, 0, 0, 0, 1])))
         cred = max(0.2, min(1.0, round(base_cred + random.choice([-0.05, 0.0, 0.0, 0.05]), 2)))
 
         triage_target = TriageOutput(

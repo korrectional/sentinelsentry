@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from sentinelsentry.config import settings
 from sentinelsentry.schema import RawFeedItem, EnrichedIncident, CorroborationReport
@@ -108,7 +108,9 @@ class VerificationAgent(BaseAgent):
                 verified_at=datetime.now(timezone.utc),
             )
 
-        incident.triage.credibility_score = adjusted_cred
+        # Update triage with adjusted credibility via copy (never mutate in-place;
+        # re-verification of the same incident would otherwise cause runaway inflation)
+        incident.triage = incident.triage.model_copy(update={"credibility_score": adjusted_cred})
         incident.verification = report
 
         if incident.triage.casualty_risk_level >= settings.HIGH_RISK_THRESHOLD and adjusted_cred >= settings.ESCALATION_MIN_CREDIBILITY:
@@ -121,9 +123,10 @@ class VerificationAgent(BaseAgent):
         self.verifications_completed += 1
         return incident
 
-    def step_sync(self) -> int:
+    def step_sync(self, max_items: Optional[int] = None) -> int:
         count = 0
-        while self.bus.verification_items:
+        limit = max_items if max_items is not None else float("inf")
+        while self.bus.verification_items and count < limit:
             incident = self.bus.verification_items.popleft()
             verified = self.verify_incident_sync(incident)
             self.bus.geocoding_items.append(verified)

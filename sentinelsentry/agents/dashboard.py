@@ -27,6 +27,7 @@ class AlertDashboardAgent(BaseAgent):
         self.console = console or Console(legacy_windows=False, force_terminal=True)
         self.incidents: Dict[str, EnrichedIncident] = {}
         self.escalated_ids: List[str] = []
+        self._corroborated_ids: set = set()
         self.stats = {
             "total_processed": 0,
             "escalated_count": 0,
@@ -55,11 +56,14 @@ class AlertDashboardAgent(BaseAgent):
                     self.escalated_ids.append(incident.incident_id)
 
         if incident.verification and incident.verification.corroborating_feed_ids:
-            self.stats["corroborated_count"] += 1
+            if incident.incident_id not in self._corroborated_ids:
+                self._corroborated_ids.add(incident.incident_id)
+                self.stats["corroborated_count"] += 1
 
-    def step_sync(self) -> int:
+    def step_sync(self, max_items: Optional[int] = None) -> int:
         count = 0
-        while self.bus.dashboard_items:
+        limit = max_items if max_items is not None else float("inf")
+        while self.bus.dashboard_items and count < limit:
             incident = self.bus.dashboard_items.popleft()
             self.process_incident(incident)
             count += 1
