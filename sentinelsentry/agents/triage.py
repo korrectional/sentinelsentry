@@ -158,7 +158,10 @@ class LocalTriageEngine:
             or ("trauma" in text_lower and any(hw in text_lower for hw in ["i-40", "i-440", "i-540", "i-85", "highway", "hwy", "exit", "mile marker", "mm "]))
         ):
             inc_type = IncidentType.VEHICLE_ACCIDENT.value
-        elif any(w in text_lower for w in ["flood", "water rising", "rising water", "skywarn", "swiftwater", "swift water", "water rescue", "submerged", "creek", "tornado", "wall cloud", "storm damage", "live power lines", "tree down", "gauge"]) or re.search(r"\b(curbs|ponding)\b", text_lower):
+        elif (
+            any(w in text_lower for w in ["flood", "water rising", "rising water", "skywarn", "swiftwater", "swift water", "water rescue", "submerged", "creek", "tornado", "wall cloud", "storm damage", "live power lines", "tree down", "gauge", "earthquake", "seismic", "tremor", "aftershock", "tsunami", "hurricane", "gale"])
+            or re.search(r"\b(curbs|ponding|quake|marine warning)\b", text_lower)
+        ):
             inc_type = IncidentType.SEVERE_WEATHER.value
         elif any(w in text_lower for w in ["chemical", "ammonia", "corrosive", "diesel fuel", "fuel spill", "hazardous material", "fumes reported", "drum"]):
             inc_type = IncidentType.HAZMAT.value
@@ -221,7 +224,7 @@ class LocalTriageEngine:
         credibility = 0.85
         if feed_source in ("social_crisis", "web_upload") or "citizen" in text_lower or "omg" in text_lower or "i think" in text_lower:
             credibility = 0.50
-        elif feed_source in ("fire_rescue", "ems_scanner", "cad_police"):
+        elif feed_source in ("fire_rescue", "ems_scanner", "cad_police", "usgs_live", "nws_live", "fema_live") or "usgs" in text_lower or "weather service" in text_lower:
             credibility = 0.95
         if "confirm" in text_lower or "on scene" in text_lower:
             credibility = min(1.0, credibility + 0.1)
@@ -236,6 +239,9 @@ class LocalTriageEngine:
         cleaned_for_loc = re.sub(r"\bCODE\s*\d+\b", " ", cleaned_for_loc, flags=re.IGNORECASE)
 
         patterns = [
+            r"\bM\s*\d+\.\d+\s*-\s*([A-Za-z0-9\s]+,\s*[A-Za-z0-9\s]+)",
+            r"\bM\s*\d+\.\d+\s*-\s*([A-Za-z0-9\s]+(?:Region|Caldera|Coast|Offshore|Fault)?)",
+            r"(?:for|in)\s+([A-Z][a-zA-Z\s]+(?:County|Basin|Region|Area))",
             r"\b(Crabtree Valley Mall(?:,\s*\d+\s+Glenwood\s+Ave)?)\b",
             r"\b(Crabtree Creek(?: Basin)?)\b",
             r"\b(WakeMed(?:\s+Health)?(?:\s*&\s*Hospitals)?(?:,\s*\d+\s+New\s+Bern\s+Ave)?)\b",

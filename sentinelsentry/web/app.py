@@ -27,6 +27,7 @@ from sentinelsentry.agents.verification import VerificationAgent
 from sentinelsentry.agents.geocoder import GeocoderAgent
 from sentinelsentry.agents.dashboard import AlertDashboardAgent
 from sentinelsentry.feeds.generator import RSSFeedGenerator
+from sentinelsentry.feeds.live import PRESET_FEEDS, fetch_and_parse_live_feed
 from sentinelsentry.eval.benchmark import get_cached_benchmark_metrics
 
 logger = logging.getLogger("sentinelsentry.web")
@@ -100,6 +101,12 @@ class SubmitIncidentRequest(BaseModel):
 
 class SpeedControlRequest(BaseModel):
     multiplier: float
+
+
+class IngestLiveFeedRequest(BaseModel):
+    url_or_preset: str
+    feed_name: Optional[str] = None
+    max_items: Optional[int] = 5
 
 
 class DispatchActionRequest(BaseModel):
@@ -300,6 +307,73 @@ def get_eval_proof():
     """Return before/after evaluation benchmark comparing Base Gemma 4 vs Gemma 4 LoRA Adapter."""
     metrics = get_cached_benchmark_metrics()
     return JSONResponse(content=metrics)
+
+
+@app.get("/api/feeds/presets")
+def get_feed_presets():
+    """Return available public emergency RSS/Atom feed presets."""
+    return JSONResponse(content={"presets": list(PRESET_FEEDS.values())})
+
+
+@app.post("/api/feeds/ingest-live")
+def ingest_live_feed(req: IngestLiveFeedRequest):
+    """
+    Ingest real-time public emergency RSS or Atom stream (e.g. USGS Earthquakes, NWS Alerts, FEMA).
+    Extracts GeoRSS coordinates, triages with Gemma 4, corroborates cross-feed,
+    and updates the Leaflet map and live operations stream.
+    """
+    if not req.url_or_preset or not req.url_or_preset.strip():
+        raise HTTPException(status_code=400, detail="Feed URL or preset key is required.")
+
+    items, is_live_network, source_desc = fetch_and_parse_live_feed(
+        url_or_preset=req.url_or_preset.strip(),
+        custom_feed_name=req.feed_name,
+        max_items=max(1, min(20, req.max_items or 5)),
+    )
+
+    if not items:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "warning",
+                "count": 0,
+                "message": "No new entries found in feed.",
+                "source_desc": source_desc,
+            },
+        )
+
+    for item in items:
+        state.bus.record_recent_item_sync(item)
+        state.bus.ingest_items.append(item)
+
+    # Drain swarm to immediately triage, verify, geocode, and push to dashboard
+    state.coordinator.drain(max_rounds=6)
+
+    # Return summary of ingested items
+    item_summaries = []
+    for item in items:
+        inc = state.dashboard.get_incident(f"INC-{item.id}")
+        item_summaries.append({
+            "item_id": item.id,
+            "title": item.title,
+            "feed_id": item.feed_id,
+            "feed_name": item.feed_name,
+            "latitude": item.metadata.get("latitude"),
+            "longitude": item.metadata.get("longitude"),
+            "display_name": item.metadata.get("display_name"),
+            "incident_type": inc.triage.incident_type if inc else "Processing",
+            "casualty_risk_level": inc.triage.casualty_risk_level if inc else 1,
+            "is_escalated": inc.is_escalated if inc else False,
+        })
+
+    return JSONResponse(content={
+        "status": "success",
+        "count": len(items),
+        "is_live_network": is_live_network,
+        "source_desc": source_desc,
+        "feed_name": req.feed_name or (items[0].feed_name if items else "Live RSS Feed"),
+        "items": item_summaries,
+    })
 
 
 @app.post("/api/submit")

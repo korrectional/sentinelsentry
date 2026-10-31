@@ -166,7 +166,32 @@ class GeocoderAgent(BaseAgent):
         limit = max_items if max_items is not None else float("inf")
         while self.bus.geocoding_items and count < limit:
             incident = self.bus.geocoding_items.popleft()
-            geocoded = self.resolve_location_sync(incident.triage.location_text)
+
+            # Prefer authoritative coordinates from feed metadata (e.g. GeoRSS Point in USGS / NWS feeds)
+            if (
+                incident.feed_item.metadata
+                and "latitude" in incident.feed_item.metadata
+                and "longitude" in incident.feed_item.metadata
+                and incident.feed_item.metadata["latitude"] is not None
+                and incident.feed_item.metadata["longitude"] is not None
+            ):
+                try:
+                    lat = float(incident.feed_item.metadata["latitude"])
+                    lon = float(incident.feed_item.metadata["longitude"])
+                    disp = incident.feed_item.metadata.get("display_name") or incident.triage.location_text
+                    geocoded = GeocodedLocation(
+                        location_text=incident.triage.location_text,
+                        latitude=lat,
+                        longitude=lon,
+                        display_name=disp,
+                        is_resolved=True,
+                        provider=incident.feed_item.metadata.get("provider", "GeoRSS Source Stream"),
+                    )
+                except (ValueError, TypeError):
+                    geocoded = self.resolve_location_sync(incident.triage.location_text)
+            else:
+                geocoded = self.resolve_location_sync(incident.triage.location_text)
+
             incident.geocoded = geocoded
             self.resolved_count += 1
             self.bus.dashboard_items.append(incident)

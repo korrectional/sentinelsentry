@@ -139,6 +139,11 @@ Evaluated on the 100 held-out synthetic emergency dispatch test lines:
 Replacing legacy CLI terminals, SentinelSentry provides a real-time web operations dashboard:
 
 - **Interactive Leaflet Map:** Dark-mode CartoDB map plotting Raleigh and Wake County incidents with pulsing pins color-coded by casualty risk level 1–5. Clicking any pin displays incident details, credibility meter, and raw text.
+- **Live Emergency RSS & Atom Feeds Button:** 1-click live ingestion modal supporting authoritative real-time public feeds:
+  - 🌍 **USGS Real-Time Earthquakes (M2.5+ Global)** with exact GeoRSS epicenter GPS coordinates.
+  - ⛈️ **NOAA / NWS Active Weather Warnings** (tornado, flash flood, severe thunderstorm, and winter warnings).
+  - 🚒 **FEMA Emergency & Disaster Declarations** (federal disaster declarations and emergency relief directives).
+  - 🔗 **Custom RSS / Atom URL Entry**: Connect any public emergency CAD or fire department stream with automatic offline fallback snapshots.
 - **Top Sticky Escalation Banner:** When `casualty_risk_level >= 4` and corroboration is established, a prominent pulsing alert lights up the operations center, remaining locked until the human dispatcher clicks **Acknowledge** or **Dispatch Units**.
 - **Live Feed with Animated Credibility:** Newest calls stream to the top; when the Verification Agent links cross-feed reports, the credibility bar smoothly animates upward and displays a `Corroborated by N feeds` badge.
 - **Human-in-the-Loop Decision Support:** Clear action buttons allow dispatchers to:
@@ -174,7 +179,7 @@ python run_demo.py --no-browser --port 8080
 ```bash
 python -B -m pytest tests/
 ```
-*(42 comprehensive unit tests covering agents, multimodal triage, verification, geocoding, and web endpoints pass in ~2.5s).*
+*(76 comprehensive unit tests covering agents, multimodal triage, verification, geocoding, live RSS feeds, and web endpoints pass in ~3.5s).*
 
 ### 4. Run the Eval Benchmark Proof
 ```bash

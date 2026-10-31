@@ -142,6 +142,11 @@
 
     <!-- Right Action Tools -->
     <div class="flex items-center space-x-2">
+      <button onclick="openLiveFeedModal()" class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-xs font-semibold text-white shadow-md shadow-orange-600/25 border border-amber-500/30 transition">
+        <i data-lucide="rss" class="w-3.5 h-3.5 text-white"></i>
+        <span>Live RSS Feeds</span>
+      </button>
+
       <button onclick="openSubmitModal()" class="flex items-center space-x-1 px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition">
         <i data-lucide="camera" class="w-3.5 h-3.5 text-blue-400"></i>
         <span>Upload Photo / Text</span>
@@ -416,6 +421,117 @@
 
       <div class="p-3 bg-slate-950 border-t border-slate-800 flex justify-end">
         <button onclick="closeEvalModal()" class="px-4 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= LIVE RSS FEED INGESTION MODAL ================= -->
+  <div id="modal-live-feed" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-xl w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-md shadow-orange-500/30">
+            <i data-lucide="rss" class="w-4 h-4 text-white"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">Live Emergency RSS / Atom Feeds</h3>
+            <p class="text-[11px] text-slate-400">Ingest real-time public crisis feeds into Gemma 4 Triage Swarm</p>
+          </div>
+        </div>
+        <button onclick="closeLiveFeedModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <div class="p-4 space-y-3.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">Select Public Emergency Source:</label>
+          <div class="space-y-2">
+            <!-- Preset 1: USGS Earthquakes -->
+            <div id="preset-card-usgs_earthquakes" onclick="selectLivePreset('usgs_earthquakes')" class="live-preset-card p-2.5 rounded-lg border border-amber-500/50 bg-amber-950/20 hover:bg-amber-950/30 cursor-pointer transition flex items-start space-x-3">
+              <div class="mt-0.5 w-6 h-6 rounded bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                <i data-lucide="activity" class="w-3.5 h-3.5"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold text-white">USGS Real-Time Earthquakes (M2.5+ Global)</span>
+                  <span class="px-1.5 py-0.2 text-[9px] font-mono rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">USGS GeoRSS</span>
+                </div>
+                <p class="text-[11px] text-slate-300 mt-0.5">Authoritative real-time seismic monitoring feed with exact GPS epicenters.</p>
+                <span class="text-[10px] text-slate-500 font-mono truncate block mt-0.5">https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.atom</span>
+              </div>
+            </div>
+
+            <!-- Preset 2: NOAA Weather -->
+            <div id="preset-card-nws_weather_alerts" onclick="selectLivePreset('nws_weather_alerts')" class="live-preset-card p-2.5 rounded-lg border border-slate-800 bg-slate-950/60 hover:bg-slate-800/50 cursor-pointer transition flex items-start space-x-3">
+              <div class="mt-0.5 w-6 h-6 rounded bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                <i data-lucide="cloud-lightning" class="w-3.5 h-3.5"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold text-white">NOAA / NWS Active Weather Warnings</span>
+                  <span class="px-1.5 py-0.2 text-[9px] font-mono rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-bold">NWS Active</span>
+                </div>
+                <p class="text-[11px] text-slate-300 mt-0.5">Active tornadoes, severe storms, flash floods, and winter storm emergency alerts.</p>
+                <span class="text-[10px] text-slate-500 font-mono truncate block mt-0.5">https://api.weather.gov/alerts/active.atom</span>
+              </div>
+            </div>
+
+            <!-- Preset 3: FEMA Relief -->
+            <div id="preset-card-fema_emergency" onclick="selectLivePreset('fema_emergency')" class="live-preset-card p-2.5 rounded-lg border border-slate-800 bg-slate-950/60 hover:bg-slate-800/50 cursor-pointer transition flex items-start space-x-3">
+              <div class="mt-0.5 w-6 h-6 rounded bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+                <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold text-white">FEMA Emergency & Disaster Declarations</span>
+                  <span class="px-1.5 py-0.2 text-[9px] font-mono rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold">FEMA Relief</span>
+                </div>
+                <p class="text-[11px] text-slate-300 mt-0.5">Federal disaster declarations, critical warnings, and emergency response directives.</p>
+                <span class="text-[10px] text-slate-500 font-mono truncate block mt-0.5">https://www.fema.gov/about/news-multimedia/rss.xml</span>
+              </div>
+            </div>
+
+            <!-- Custom URL option -->
+            <div id="preset-card-custom" onclick="selectLivePreset('custom')" class="live-preset-card p-2.5 rounded-lg border border-slate-800 bg-slate-950/60 hover:bg-slate-800/50 cursor-pointer transition flex items-start space-x-3">
+              <div class="mt-0.5 w-6 h-6 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                <i data-lucide="link" class="w-3.5 h-3.5"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold text-white">Custom RSS / Atom URL</span>
+                  <span class="px-1.5 py-0.2 text-[9px] font-mono rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">Custom</span>
+                </div>
+                <p class="text-[11px] text-slate-300 mt-0.5">Connect any public CAD, regional fire department RSS, or emergency news stream.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Custom Feed URL Input (shown when Custom is selected) -->
+        <div id="custom-feed-url-container" class="hidden">
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Custom Feed URL:</label>
+          <input type="url" id="input-custom-feed-url" class="w-full bg-slate-950 border border-slate-700 rounded-md p-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono" placeholder="https://example.org/emergency/rss.xml" />
+        </div>
+
+        <!-- Ingest Parameters -->
+        <div class="flex items-center justify-between bg-slate-950/80 p-2.5 rounded-lg border border-slate-800 text-xs">
+          <span class="text-slate-300 font-medium">Entries to Ingest & Triage:</span>
+          <div class="flex items-center space-x-1">
+            <button onclick="setMaxFeedItems(3)" class="max-item-btn px-2 py-0.5 rounded text-slate-400 hover:bg-slate-800 font-mono" data-val="3">3</button>
+            <button onclick="setMaxFeedItems(5)" class="max-item-btn px-2 py-0.5 rounded bg-amber-600 text-white font-mono font-bold" data-val="5">5</button>
+            <button onclick="setMaxFeedItems(10)" class="max-item-btn px-2 py-0.5 rounded text-slate-400 hover:bg-slate-800 font-mono" data-val="10">10</button>
+          </div>
+        </div>
+
+        <!-- Status message / banner -->
+        <div id="live-feed-status-banner" class="hidden p-2.5 rounded-lg text-xs font-mono"></div>
+      </div>
+
+      <div class="p-3 bg-slate-950 border-t border-slate-800 flex justify-end space-x-2">
+        <button onclick="closeLiveFeedModal()" class="px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">Close</button>
+        <button id="btn-ingest-feed" onclick="ingestLiveFeedStream()" class="flex items-center space-x-1.5 px-4 py-1.5 rounded-md bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-xs font-semibold text-white shadow-lg shadow-orange-600/30 transition">
+          <i data-lucide="zap" class="w-3.5 h-3.5 fill-current"></i>
+          <span>Ingest & Triage Stream</span>
+        </button>
       </div>
     </div>
   </div>
@@ -977,6 +1093,128 @@
           }
         }
       });
+    }
+
+    // Live RSS Feed Modal Logic
+    let selectedLivePreset = 'usgs_earthquakes';
+    let selectedMaxFeedItems = 5;
+
+    function openLiveFeedModal() {
+      document.getElementById('modal-live-feed').classList.remove('hidden');
+      const banner = document.getElementById('live-feed-status-banner');
+      banner.classList.add('hidden');
+      banner.innerText = '';
+      lucide.createIcons();
+    }
+
+    function closeLiveFeedModal() {
+      document.getElementById('modal-live-feed').classList.add('hidden');
+    }
+
+    function selectLivePreset(presetKey) {
+      selectedLivePreset = presetKey;
+      const cards = document.querySelectorAll('.live-preset-card');
+      cards.forEach(card => {
+        card.classList.remove('border-amber-500/50', 'bg-amber-950/20');
+        card.classList.add('border-slate-800', 'bg-slate-950/60');
+      });
+
+      const targetCard = document.getElementById(`preset-card-${presetKey}`);
+      if (targetCard) {
+        targetCard.classList.remove('border-slate-800', 'bg-slate-950/60');
+        targetCard.classList.add('border-amber-500/50', 'bg-amber-950/20');
+      }
+
+      const customContainer = document.getElementById('custom-feed-url-container');
+      if (presetKey === 'custom') {
+        customContainer.classList.remove('hidden');
+      } else {
+        customContainer.classList.add('hidden');
+      }
+    }
+
+    function setMaxFeedItems(count) {
+      selectedMaxFeedItems = count;
+      document.querySelectorAll('.max-item-btn').forEach(btn => {
+        if (parseInt(btn.dataset.val) === count) {
+          btn.className = 'max-item-btn px-2 py-0.5 rounded bg-amber-600 text-white font-mono font-bold';
+        } else {
+          btn.className = 'max-item-btn px-2 py-0.5 rounded text-slate-400 hover:bg-slate-800 font-mono';
+        }
+      });
+    }
+
+    async function ingestLiveFeedStream() {
+      const btn = document.getElementById('btn-ingest-feed');
+      const banner = document.getElementById('live-feed-status-banner');
+      let targetUrlOrPreset = selectedLivePreset;
+      let customName = null;
+
+      if (selectedLivePreset === 'custom') {
+        const inputUrl = document.getElementById('input-custom-feed-url').value.trim();
+        if (!inputUrl) {
+          alert('Please enter a valid custom RSS or Atom feed URL.');
+          return;
+        }
+        targetUrlOrPreset = inputUrl;
+        customName = 'Custom RSS Emergency Feed';
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = `<span class="animate-spin mr-1">⏳</span><span>Triaging Stream...</span>`;
+      banner.className = 'p-2.5 rounded-lg text-xs font-mono bg-blue-950/50 border border-blue-800/60 text-blue-300 flex items-center space-x-2';
+      banner.innerHTML = `<span class="w-2 h-2 rounded-full bg-blue-400 animate-ping"></span><span>Connecting to live feed & triaging entries with Gemma 4...</span>`;
+      banner.classList.remove('hidden');
+
+      try {
+        const resp = await fetch('/api/feeds/ingest-live', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url_or_preset: targetUrlOrPreset,
+            feed_name: customName,
+            max_items: selectedMaxFeedItems
+          })
+        });
+
+        const data = await resp.json();
+        if (resp.ok && data.status === 'success') {
+          const netBadge = data.is_live_network ? '🟢 Live Network Stream' : '🟡 Curated Emergency Snapshot';
+          banner.className = 'p-2.5 rounded-lg text-xs font-mono bg-emerald-950/60 border border-emerald-800 text-emerald-300';
+          banner.innerHTML = `
+            <div class="font-bold flex items-center justify-between mb-1">
+              <span>✅ Ingested ${data.count} items from ${data.feed_name}</span>
+              <span class="text-[10px] px-1.5 py-0.2 rounded bg-black/40">${netBadge}</span>
+            </div>
+            <p class="text-[11px] text-slate-300">${data.source_desc}</p>
+          `;
+
+          // Refresh incident stream and map
+          const incRes = await fetch('/api/incidents');
+          const incData = await incRes.json();
+          renderIncidentFeed(incData.incidents);
+          updateMapPins(incData.incidents);
+
+          // If items with valid coordinates were ingested, adjust Leaflet map view
+          if (data.items && data.items.length > 0 && map && markersLayer) {
+            const validCoords = data.items.filter(it => it.latitude && it.longitude).map(it => [it.latitude, it.longitude]);
+            if (validCoords.length > 0) {
+              const bounds = L.latLngBounds(validCoords);
+              map.fitBounds(bounds, { padding: [50, 50], maxZoom: 11 });
+            }
+          }
+        } else {
+          banner.className = 'p-2.5 rounded-lg text-xs font-mono bg-red-950/60 border border-red-800 text-red-300';
+          banner.innerText = `⚠️ Ingestion warning: ${data.message || 'No entries ingested.'}`;
+        }
+      } catch (err) {
+        banner.className = 'p-2.5 rounded-lg text-xs font-mono bg-red-950/60 border border-red-800 text-red-300';
+        banner.innerText = `❌ Error connecting to feed: ${err.message}`;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i data-lucide="zap" class="w-3.5 h-3.5 fill-current"></i><span>Ingest & Triage Stream</span>`;
+        lucide.createIcons();
+      }
     }
 
     function closeEvalModal() {
