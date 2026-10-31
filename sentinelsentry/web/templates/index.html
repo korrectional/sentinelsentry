@@ -478,8 +478,13 @@
         attributionControl: false
       }).setView([35.7796, -78.6382], 12);
 
-      // Dark Matter Map Tiles
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      // Dark Matter Map Tiles (CARTO DarkMatter free public raster tiles by default; custom key/url if configured)
+      const configuredTileUrl = '__MAP_TILE_URL__';
+      const tileUrl = (configuredTileUrl.startsWith('__') || !configuredTileUrl)
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : configuredTileUrl;
+
+      L.tileLayer(tileUrl, {
         maxZoom: 18,
         subdomains: 'abcd',
       }).addTo(map);

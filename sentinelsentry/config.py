@@ -68,6 +68,13 @@ class Settings(BaseModel):
     WEB_HOST: str = "127.0.0.1"
     WEB_PORT: int = 8000
 
+    # Map & Tile Settings (Free DarkMatter public tiles by default; CARTO API Key optional)
+    CARTO_API_KEY: Optional[str] = os.environ.get("CARTO_API_KEY")
+    MAP_TILE_URL: str = os.environ.get(
+        "MAP_TILE_URL",
+        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    )
+
     # Default simulated feeds
     FEEDS: List[FeedConfig] = [
         FeedConfig(

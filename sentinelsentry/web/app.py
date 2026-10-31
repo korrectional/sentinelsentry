@@ -266,7 +266,15 @@ def serve_dashboard():
     if not template_path.exists():
         raise HTTPException(status_code=404, detail="Dashboard template not found.")
     with open(template_path, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+        html_content = f.read()
+
+    tile_url = settings.MAP_TILE_URL
+    if settings.CARTO_API_KEY:
+        sep = "&" if "?" in tile_url else "?"
+        tile_url = f"{tile_url}{sep}api_key={settings.CARTO_API_KEY}"
+
+    html_content = html_content.replace("__MAP_TILE_URL__", tile_url)
+    return HTMLResponse(content=html_content)
 
 
 @app.get("/api/incidents")
