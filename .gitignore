@@ -28,7 +28,6 @@ wheels/
 .coverage
 htmlcov/
 test_mod.py
-test_run.py
 
 # Local data cache
 sentinelsentry_data/
