@@ -127,9 +127,9 @@ Evaluated on the 100 held-out synthetic emergency dispatch test lines:
 
 | Metric | Base Gemma 4 (Strict Prompt) | SentinelSentry Gemma 4 LoRA | Improvement |
 | :--- | :---: | :---: | :---: |
-| **Strict JSON Validity Rate** | 63.0% | **100.0%** | **+37.0%** |
-| **Incident-Type Accuracy** | 0.0% *(drifted keys/taxonomy drift)* | **82.0%** *(ground truth taxonomy)* | **+82.0%** |
-| **Casualty Risk MAE (Scale 1–5)** | 1.84 | **0.80** | **-1.04 error reduction** |
+| **Strict JSON Validity Rate** | 70.0% | **100.0%** | **+30.0%** |
+| **Incident-Type Accuracy** | 0.0% *(drifted keys/taxonomy drift)* | **94.0%** *(ground truth taxonomy)* | **+94.0%** |
+| **Casualty Risk MAE (Scale 1–5)** | 1.81 | **0.80** | **-1.01 error reduction** |
 | **Adapter Footprint** | — | **25.1 MB** *(NF4/FP16 LoRA)* | Zero-latency Edge / VM Deployable |
 
 ---

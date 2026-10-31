@@ -183,6 +183,10 @@
       </div>
     </div>
     <div class="flex items-center space-x-2">
+      <button onclick="locateTopEscalationOnMap()" class="px-3 py-1.5 rounded bg-red-900/60 hover:bg-red-900 border border-red-300 text-white font-semibold text-xs transition flex items-center space-x-1">
+        <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+        <span>Locate</span>
+      </button>
       <button id="btn-banner-ack" onclick="acknowledgeTopEscalation()" class="px-4 py-1.5 rounded bg-white hover:bg-slate-100 text-red-700 font-bold text-xs shadow-lg transition active:scale-95 flex items-center space-x-1">
         <i data-lucide="check-circle-2" class="w-4 h-4"></i>
         <span>Acknowledge</span>
@@ -594,9 +598,15 @@
             </div>
 
             <h4 class="text-xs font-bold text-white mb-0.5">${inc.incident_type}</h4>
-            <div class="text-[11px] text-slate-400 flex items-center space-x-1 mb-2">
-              <i data-lucide="map-pin" class="w-3 h-3 text-slate-500 shrink-0"></i>
-              <span class="truncate">${inc.display_name}</span>
+            <div class="text-[11px] text-slate-400 flex items-center justify-between mb-2">
+              <div class="flex items-center space-x-1 truncate max-w-[200px]">
+                <i data-lucide="map-pin" class="w-3 h-3 text-slate-500 shrink-0"></i>
+                <span class="truncate">${inc.display_name}</span>
+              </div>
+              <button onclick="locateIncidentOnMap('${inc.incident_id}')" class="text-blue-400 hover:text-blue-300 font-semibold text-[10px] flex items-center space-x-0.5 shrink-0 transition">
+                <i data-lucide="crosshair" class="w-2.5 h-2.5"></i>
+                <span>Map</span>
+              </button>
             </div>
 
             <p class="text-[11px] font-mono bg-slate-950/80 p-2 rounded border border-slate-800/80 text-slate-300 mb-2 leading-relaxed">
@@ -750,9 +760,25 @@
       try { return JSON.parse(str); } catch (e) { return null; }
     }
 
+    function locateIncidentOnMap(id) {
+      const marker = activeMarkers[id];
+      if (marker && map) {
+        map.flyTo(marker.getLatLng(), 15, { animate: true, duration: 0.8 });
+        marker.openPopup();
+      }
+    }
+
+    function locateTopEscalationOnMap() {
+      if (topEscalationId) locateIncidentOnMap(topEscalationId);
+    }
+
     // Dispatcher Actions
     async function acknowledgeIncident(id) {
       await fetch(`/api/incidents/${id}/acknowledge`, { method: 'POST' });
+      const res = await fetch('/api/incidents');
+      const data = await res.json();
+      renderIncidentFeed(data.incidents);
+      updateMapPins(data.incidents);
     }
 
     async function acknowledgeTopEscalation() {
@@ -760,11 +786,19 @@
     }
 
     async function dispatchIncident(id) {
+      const defaultUnits = "Engine 4, Ladder 1, Medic 2";
+      const input = prompt("Assign emergency response units (comma-separated):", defaultUnits);
+      if (input === null) return;
+      const units = input.split(",").map(u => u.trim()).filter(Boolean);
       await fetch(`/api/incidents/${id}/dispatch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ units: ['Engine 3', 'Truck 1', 'Medic 11'] })
+        body: JSON.stringify({ units: units.length > 0 ? units : ['Engine 4', 'Medic 2'] })
       });
+      const res = await fetch('/api/incidents');
+      const data = await res.json();
+      renderIncidentFeed(data.incidents);
+      updateMapPins(data.incidents);
     }
 
     async function dispatchTopEscalation() {
@@ -772,11 +806,17 @@
     }
 
     async function dismissIncident(id) {
+      const reason = prompt("Enter dismissal reason (e.g. False Alarm, Test trip):", "False Alarm / Non-Emergency");
+      if (reason === null) return;
       await fetch(`/api/incidents/${id}/dismiss`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: 'False Alarm / Duplicate' })
+        body: JSON.stringify({ reason: reason.trim() || 'Dismissed by Dispatcher' })
       });
+      const res = await fetch('/api/incidents');
+      const data = await res.json();
+      renderIncidentFeed(data.incidents);
+      updateMapPins(data.incidents);
     }
 
     // Demo Controls

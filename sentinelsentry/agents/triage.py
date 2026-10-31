@@ -141,7 +141,14 @@ class LocalTriageEngine:
 
         # 1. Detect Incident Type
         inc_type = IncidentType.UNKNOWN.value
-        if any(w in text_lower for w in ["fire", "flames", "smoke", "10-70", "alarm", "burn"]):
+
+        # Priority 1: Civil Unrest / Active Shooter / Threat (check first so "shots fired" is never confused with structure fire)
+        if any(w in text_lower for w in ["shots", "gunshots", "10-33", "active shooter", "weapon", "robbery", "fight", "disturbance", "altercation", "handgun", "gunfire"]):
+            inc_type = IncidentType.CIVIL_UNREST.value
+        elif (
+            any(w in text_lower for w in ["structure fire", "commercial fire", "apartment fire", "flames", "smoke", "10-70", "alarm", "burn", "burning"])
+            or re.search(r"\bfire\b", text_lower)
+        ):
             if "alarm" in text_lower and any(w in text_lower for w in ["waterflow", "accidental", "false", "test", "maintenance", "valve test"]):
                 inc_type = IncidentType.NON_EMERGENCY.value
             else:
@@ -157,8 +164,6 @@ class LocalTriageEngine:
             inc_type = IncidentType.HAZMAT.value
         elif any(w in text_lower for w in ["gas leak", "gas main", "natural gas", "gas odor", "gas smell", "odor of gas", "directional drilling", "10-75", "lel meter", "pipeline", "odor", "rotten eggs", "sulfur smell"]):
             inc_type = IncidentType.GAS_LEAK.value
-        elif any(w in text_lower for w in ["shots", "gunshots", "10-33", "active shooter", "weapon", "robbery", "fight", "disturbance", "altercation", "handgun", "popping"]):
-            inc_type = IncidentType.CIVIL_UNREST.value
         elif any(w in text_lower for w in [
             "cpr", "cardiac", "echo response", "unresponsive", "10-54", "medical",
             "trauma", "patient", "patients", "pediatric", "life flight", "overdose",
@@ -194,7 +199,7 @@ class LocalTriageEngine:
         elif any(w in text_lower for w in [
             "injuries", "medic en route", "code 3", "2-alarm", "2nd alarm", "swiftwater", "swift water",
             "flash flood", "lel meters reading 70%", "lel meter", "explosion", "explosions", "gas main",
-            "flames showing roof", "flames visible", "smoke and visible", "10-70 comm", "10-54 medical",
+            "flames showing roof", "flames visible", "smoke and visible", "heavy smoke", "10-70 comm", "10-54 medical",
             "10-75 hazmat", "ruptured 4-inch", "active disturbance", "large fight in progress", "wind gusts",
             "multi-car pileup", "multi-vehicle", "highway completely", "overdose suspected", "yellow tag", "rollover", "trauma"
         ]):
@@ -209,7 +214,7 @@ class LocalTriageEngine:
         # Visual evidence boost: if an image confirms heavy damage or life threat, adjust risk
         if image_data:
             img_desc = image_data.lower()
-            if any(term in img_desc for term in ["trapped", "roof", "rollover", "submerged", "heavy damage", "flames"]):
+            if any(term in img_desc for term in ["trapped", "roof", "rollover", "submerged", "heavy damage", "flames", "fire", "smoke", "flood", "crash", "wreck"]):
                 risk = max(risk, 4)
 
         # 3. Estimate Credibility
