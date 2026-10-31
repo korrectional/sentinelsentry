@@ -75,6 +75,8 @@ class BenchmarkRunner:
         adapter_engine = LocalTriageEngine()
 
         total = len(self.test_samples)
+        if total == 0:
+            raise ValueError(f"No test samples found in '{self.test_file_path}'.")
         base_valid_json = 0
         base_type_correct = 0
         base_risk_diffs = []

@@ -47,8 +47,13 @@ class GeocoderAgent(BaseAgent):
 
     def _lookup_local_cache(self, location_text: str) -> Optional[GeocodedLocation]:
         norm = location_text.lower().strip()
+        generic_tokens = {"st", "ave", "rd", "blvd", "dr", "lane", "way", "street", "road", "avenue", "near", "at", "and"}
+        tokens = set(norm.replace(",", " ").replace(".", " ").replace("&", " ").split())
+        significant_tokens = tokens - generic_tokens
+
         for key, (lat, lon, display) in LOCAL_LANDMARK_CACHE.items():
-            if key in norm or norm in key:
+            # Match 1: Full landmark key appears inside the location text (e.g. "1200 s saunders st" in "accident at 1200 s saunders st")
+            if key in norm:
                 return GeocodedLocation(
                     location_text=location_text,
                     latitude=lat,
@@ -57,6 +62,17 @@ class GeocoderAgent(BaseAgent):
                     is_resolved=True,
                     provider="Local Raleigh Landmark Cache",
                 )
+            # Match 2: Query contains significant non-generic tokens and matches key (e.g. "401 fayetteville" or "crabtree mall")
+            if significant_tokens and len(norm) >= 5:
+                if all(tok in key for tok in significant_tokens):
+                    return GeocodedLocation(
+                        location_text=location_text,
+                        latitude=lat,
+                        longitude=lon,
+                        display_name=display,
+                        is_resolved=True,
+                        provider="Local Raleigh Landmark Cache",
+                    )
         return None
 
     def resolve_location_sync(self, location_text: str) -> GeocodedLocation:

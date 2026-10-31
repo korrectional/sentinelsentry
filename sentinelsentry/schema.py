@@ -149,6 +149,6 @@ class EnrichedIncident(BaseModel):
 
     @property
     def summary_line(self) -> str:
-        loc = self.geocoded.display_name if (self.geocoded and self.geocoded.is_resolved) else self.triage.location_text
+        loc = (self.geocoded.display_name if (self.geocoded and self.geocoded.is_resolved and self.geocoded.display_name) else self.triage.location_text) or "Unknown"
         esc = "[ESCALATED]" if self.is_escalated else "[ROUTINE]"
         return f"{esc} [{self.triage.incident_type}] Risk:{self.triage.casualty_risk_level}/5 | Cred:{self.triage.credibility_score:.2f} | Loc:{loc}"
