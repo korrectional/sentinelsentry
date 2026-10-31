@@ -91,7 +91,7 @@ class SwarmCoordinator:
         self.verification_agent: Optional[Any] = None
         self.geocoder_agent: Optional[Any] = None
         self.dashboard_agent: Optional[Any] = None
-        # Async Mode B state
+        self._running: bool = False
         self._async_running: bool = False
         self._async_tasks: List[asyncio.Task] = []
 
@@ -166,10 +166,11 @@ class SwarmCoordinator:
         
         Each agent runs a loop calling step_sync until stopped.
         """
-        if self._async_running:
+        if self._async_running or self._running:
             logger.warning("SwarmCoordinator.start() called but already running.")
             return
 
+        self._running = True
         self._async_running = True
         all_agents: List[Any] = list(self.ingest_agents) + list(self.triage_workers)
         for agent in [self.verification_agent, self.geocoder_agent, self.dashboard_agent]:
@@ -191,8 +192,9 @@ class SwarmCoordinator:
 
     async def stop(self) -> None:
         """Signal all async agent tasks to stop and await their completion."""
-        if not self._async_running:
+        if not self._async_running and not self._running:
             return
+        self._running = False
         self._async_running = False
         for task in self._async_tasks:
             task.cancel()

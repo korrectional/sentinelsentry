@@ -35,4 +35,5 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-p no:langsmith_plugin -p no:cacheprovider"
+testpaths = ["tests"]
+addopts = "-p no:langsmith_plugin -p no:anyio -p no:cacheprovider"

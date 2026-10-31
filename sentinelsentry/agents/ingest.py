@@ -33,11 +33,22 @@ class IngestAgent(BaseAgent):
         self.total_ingested = 0
 
     def step_sync(self, max_items: Optional[int] = None) -> int:
-        """Synchronously poll the feed (using custom_fetcher or XML parser) and push new items."""
-        if not self.custom_fetcher:
+        """Synchronously poll the feed (using custom_fetcher, feed URL, or XML parser) and push new items."""
+        if self.custom_fetcher:
+            raw_items = self.custom_fetcher()
+        elif self.config.url and self.config.url.startswith("http"):
+            try:
+                import urllib.request
+                req = urllib.request.Request(self.config.url, headers={"User-Agent": "SentinelSentry/1.0"})
+                with urllib.request.urlopen(req, timeout=3.0) as resp:
+                    xml_text = resp.read().decode("utf-8")
+                raw_items = self.client.parse_feed_content(xml_text)
+            except Exception as e:
+                logger.debug(f"[{self.agent_name}] Feed fetch failed ({e})")
+                raw_items = []
+        else:
             return 0
 
-        raw_items = self.custom_fetcher()
         count = 0
         limit = max_items if max_items is not None else float("inf")
         for item in raw_items:
@@ -53,3 +64,22 @@ class IngestAgent(BaseAgent):
                 self.bus.ingest_items.append(item)
                 logger.info(f"[{self.agent_name}] Ingested item {item.id}: {item.title}")
         return count
+
+    async def run_async_loop(self) -> None:
+        """Asynchronously stream items from feed and enqueue to bus."""
+        import asyncio
+        self._running = True
+        try:
+            if self.custom_fetcher:
+                while self._running:
+                    self.step_sync()
+                    await asyncio.sleep(0.1)
+            else:
+                async for item in self.client.stream_items():
+                    if not self._running:
+                        break
+                    self.bus.record_recent_item_sync(item)
+                    self.bus.ingest_items.append(item)
+                    self.total_ingested += 1
+        except asyncio.CancelledError:
+            self._running = False

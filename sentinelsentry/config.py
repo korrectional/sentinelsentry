@@ -47,6 +47,9 @@ class Settings(BaseModel):
     LORA_ALPHA: int = 32
     LORA_DROPOUT: float = 0.05
     ADAPTER_OUTPUT_DIR: str = "adapter_model"
+    _LOCAL_ADAPTER: Path = BASE_DIR / "adapter_model"
+    _TEMP_ADAPTER: Path = Path(os.environ.get("TEMP", "/tmp")) / "sentinelsentry_weights"
+    ADAPTER_DIR: Path = _TEMP_ADAPTER if (_TEMP_ADAPTER / "adapter_model.safetensors").exists() else _LOCAL_ADAPTER
     HF_REPO_ID: str = "sentinelsentry/gemma-2b-crisis-triage"
 
     # Agent thresholds
