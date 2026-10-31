@@ -45,15 +45,25 @@ class FeedServerManager:
             gen.populate_from_scenarios()
             self.generators[cfg.id] = gen
 
+    def _normalize_id(self, feed_id: str) -> str:
+        clean = feed_id.replace(".xml", "").strip()
+        if clean in self.generators:
+            return clean
+        alt = clean.replace("-", "_")
+        if alt in self.generators:
+            return alt
+        alt_hyphen = clean.replace("_", "-")
+        if alt_hyphen in self.generators:
+            return alt_hyphen
+        raise KeyError(f"Feed '{feed_id}' not found. Available: {list(self.generators.keys())}")
+
     def get_feed_xml(self, feed_id: str) -> str:
-        if feed_id not in self.generators:
-            raise KeyError(f"Feed '{feed_id}' not found.")
-        return self.generators[feed_id].to_rss_xml()
+        fid = self._normalize_id(feed_id)
+        return self.generators[fid].to_rss_xml()
 
     def inject_item(self, feed_id: str, raw_text: str, title: Optional[str] = None, scenario_id: Optional[str] = None) -> str:
-        if feed_id not in self.generators:
-            raise KeyError(f"Feed '{feed_id}' not found.")
-        return self.generators[feed_id].add_item(
+        fid = self._normalize_id(feed_id)
+        return self.generators[fid].add_item(
             raw_text=raw_text,
             title=title,
             published_at=datetime.now(timezone.utc),
@@ -103,15 +113,14 @@ async def list_feeds():
     ]
 
 
+@app.get("/feeds/{feed_id}")
 @app.get("/feeds/{feed_id}.xml")
 async def get_rss_feed(feed_id: str):
-    # Strip .xml if included in route match
-    clean_id = feed_id.replace(".xml", "")
     try:
-        xml_content = feed_manager.get_feed_xml(clean_id)
+        xml_content = feed_manager.get_feed_xml(feed_id)
         return Response(content=xml_content, media_type="application/rss+xml; charset=utf-8")
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"Feed '{clean_id}' does not exist.")
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @app.post("/feeds/inject")

@@ -127,15 +127,17 @@ class LocalTriageEngine:
             inc_type = IncidentType.NON_EMERGENCY.value
         elif any(w in text_lower for w in ["shots", "gunshots", "10-33", "active shooter", "robbery", "fight", "disturbance", "altercation", "handgun"]):
             inc_type = IncidentType.CIVIL_UNREST.value
-        elif any(w in text_lower for w in ["gas leak", "hazmat", "10-75", "lel meter", "pipeline", "gas odor", "chemical fumes", "fuel spill", "diesel", "natural gas", "odor of gas", "odor"]):
+        elif any(w in text_lower for w in ["gas leak", "gas main", "natural gas", "gas odor", "odor of gas", "directional drilling", "10-75", "lel meter", "pipeline", "odor"]):
             inc_type = IncidentType.GAS_LEAK.value
-        elif any(w in text_lower for w in ["flood", "water rising", "skywarn", "swiftwater", "submerged", "creek", "tornado", "wall cloud", "storm damage", "live power lines", "tree down"]) or re.search(r"\bponding\b", text_lower):
+        elif any(w in text_lower for w in ["ammonia", "corrosive", "chemical fumes", "fuel spill", "diesel", "hazmat", "drum"]):
+            inc_type = IncidentType.HAZMAT.value
+        elif any(w in text_lower for w in ["flood", "water rising", "skywarn", "swiftwater", "submerged", "creek", "tornado", "wall cloud", "storm damage", "live power lines", "tree down"]) or re.search(r"\b(curbs|ponding)\b", text_lower):
             inc_type = IncidentType.SEVERE_WEATHER.value
         elif any(w in text_lower for w in ["10-50", "accident", "crash", "rollover", "extrication", "mva", "collision", "pinned", "pileup", "pedestrian struck", "t-bone", "rear-end"]):
             inc_type = IncidentType.VEHICLE_ACCIDENT.value
         elif any(w in text_lower for w in ["cpr", "cardiac", "echo response", "unresponsive", "10-54", "medical assist", "anaphylactic", "chest pain", "syncope", "overdose", "fall", "narcan"]):
             inc_type = IncidentType.MEDICAL_EMERGENCY.value
-        elif re.search(r"\b(fire|flames|smoke|10-70|2-alarm|burn|grease fire|brush fire|alarm)\b", text_lower):
+        elif any(w in text_lower for w in ["fire", "flames", "smoke", "10-70", "2-alarm", "burn", "grease fire", "brush fire", "alarm"]):
             inc_type = IncidentType.STRUCTURE_FIRE.value
 
         # 2. Estimate Casualty Risk (1-5)
@@ -160,18 +162,22 @@ class LocalTriageEngine:
 
         # 4. Extract Location Text
         loc = "Unknown"
+        cleaned_for_loc = re.sub(r"\b10-\d{2}\b", "", text)
         patterns = [
-            r"(\d{2,5}\s+[A-Za-z0-9\.\s]+(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road))",
-            r"(I-\d{1,3}\s+(?:EB|WB|NB|SB|Eastbound|Westbound)?[^,\.\n]+)",
-            r"([A-Za-z\s]+(?:Ave|St|Rd|Blvd)\s+(?:&|and|nr|at)\s+[A-Za-z\s]+(?:Ave|St|Rd|Blvd))",
-            r"(Crabtree Valley Mall[^,\.\n]*)",
-            r"(Crabtree Creek[^,\.\n]*)",
-            r"(Glenwood Ave & Peace St[^,\.\n]*)",
+            r"\b(Crabtree Valley Mall(?:,\s*\d+\s+Glenwood\s+Ave)?)\b",
+            r"\b(I-\d{1,3}\s+(?:EB|WB|NB|SB|Eastbound|Westbound)?\s*(?:MM|Mile\s+Marker|nr|near|Exit)[^,\.\n]+)\b",
+            r"(?:at|on|near|nr|along)\s+([A-Za-z0-9\s]+?(?:Ave|St|Rd|Blvd|Dr|Lane|Trail|Pkwy)\s+(?:&|and|nr|near)\s+[A-Za-z0-9\s]+?(?:Ave|St|Rd|Blvd|Dr|Lane|Trail|Pkwy))\b",
+            r"\b([A-Za-z0-9\s]+?(?:Ave|St|Rd|Blvd)\s+(?:&|and)\s+[A-Za-z0-9\s]+?(?:Ave|St|Rd|Blvd))\b",
+            r"(?:at|on|near|nr|along)\s+(\d{2,5}\s+[NSEW]?\s*[A-Za-z0-9\.\s]+?(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road))\b",
+            r"\b(\d{2,5}\s+[NSEW]?\s*[A-Za-z0-9\.\s]+?(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road))\b",
+            r"\b(Crabtree Creek)\b",
         ]
         for pat in patterns:
-            m = re.search(pat, text, re.IGNORECASE)
+            m = re.search(pat, cleaned_for_loc, re.IGNORECASE)
             if m:
                 loc = m.group(1).strip()
+                if loc.isupper():
+                    loc = loc.title()
                 break
 
         return TriageOutput(

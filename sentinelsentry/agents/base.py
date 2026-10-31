@@ -72,6 +72,7 @@ class SwarmCoordinator:
         self.verification_agent: Optional[Any] = None
         self.geocoder_agent: Optional[Any] = None
         self.dashboard_agent: Optional[Any] = None
+        self._running: bool = False
 
     def register_ingest_agent(self, agent: Any) -> None:
         self.ingest_agents.append(agent)
@@ -133,3 +134,38 @@ class SwarmCoordinator:
             if sum(res.values()) == 0:
                 break
         return round_results
+
+    async def start(self) -> None:
+        """Start asynchronous concurrent worker tasks across all agents (Mode B)."""
+        self._running = True
+        self._async_tasks: List[asyncio.Task] = []
+
+        for ing in self.ingest_agents:
+            if hasattr(ing, "run_async_loop"):
+                self._async_tasks.append(asyncio.create_task(ing.run_async_loop()))
+
+        self._coordinator_task = asyncio.create_task(self._run_coordinator_loop())
+
+    async def _run_coordinator_loop(self) -> None:
+        try:
+            while self._running:
+                self.step()
+                await asyncio.sleep(0.05)
+        except asyncio.CancelledError:
+            self._running = False
+
+    async def stop(self) -> None:
+        """Gracefully terminate all asynchronous worker tasks."""
+        self._running = False
+        all_tasks = []
+        if hasattr(self, "_coordinator_task") and self._coordinator_task:
+            self._coordinator_task.cancel()
+            all_tasks.append(self._coordinator_task)
+        for t in getattr(self, "_async_tasks", []):
+            t.cancel()
+            all_tasks.append(t)
+        for ing in self.ingest_agents:
+            if hasattr(ing, "_running"):
+                ing._running = False
+        if all_tasks:
+            await asyncio.gather(*all_tasks, return_exceptions=True)

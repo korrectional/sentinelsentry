@@ -28,19 +28,37 @@ class VerificationAgent(BaseAgent):
         self.verifications_completed = 0
         self.escalations_triggered = 0
 
+    LOCATION_STOPWORDS = {
+        "near", "with", "from", "road", "street", "avenue", "lane", "drive",
+        "blvd", "pkwy", "trail", "highway", "interstate", "structure", "residential",
+        "commercial", "building", "fire", "smoke", "flames", "flame", "alarm",
+        "water", "flood", "flooding", "patient", "medical", "assist", "accident",
+        "crash", "rollover", "trapped", "pinned", "occupant", "unaccounted",
+        "police", "officer", "medic", "engine", "ladder", "units", "code",
+        "scene", "progress", "evacuation", "evac", "report", "reported",
+        "vehicle", "damage", "lines", "active", "threat", "severe",
+        "weather", "shots", "shooting", "hazard", "fumes", "leak",
+        "alert", "critical", "heavy", "minor", "inside", "outside",
+        "someone", "people", "everyone", "sirens", "downtown", "north",
+        "south", "east", "west", "approx", "county", "raleigh", "cary",
+    }
+
     def _extract_location_tokens(self, text: str) -> set[str]:
         words = set()
-        for token in text.replace(",", " ").replace(".", " ").replace("&", " ").split():
+        clean_text = text.replace(",", " ").replace(".", " ").replace("&", " ").replace("/", " ").replace("-", " ")
+        for token in clean_text.split():
             clean = token.strip().lower()
-            if len(clean) > 3 and clean not in {"near", "with", "from", "road", "street", "avenue", "lane", "drive"}:
+            if len(clean) >= 3 and clean not in self.LOCATION_STOPWORDS:
                 words.add(clean)
         return words
 
     def _find_corroborations(self, incident: EnrichedIncident, recent_items: List[RawFeedItem]) -> List[Tuple[RawFeedItem, float]]:
         target_feed = incident.feed_item.feed_id
         target_time = incident.feed_item.published_at
-        target_loc_tokens = self._extract_location_tokens(incident.triage.location_text)
-        target_raw_tokens = self._extract_location_tokens(incident.feed_item.raw_text)
+
+        target_loc_text = incident.triage.location_text.lower().strip()
+        has_valid_target_loc = target_loc_text != "unknown" and len(target_loc_text) > 3
+        target_loc_tokens = self._extract_location_tokens(incident.triage.location_text) if has_valid_target_loc else set()
 
         corroborating = []
         for cand in recent_items:
@@ -51,14 +69,19 @@ class VerificationAgent(BaseAgent):
             if dt_seconds > settings.CORROBORATION_TIME_WINDOW_SECONDS:
                 continue
 
-            cand_tokens = self._extract_location_tokens(cand.raw_text)
-            loc_overlap = target_loc_tokens.intersection(cand_tokens) or target_raw_tokens.intersection(cand_tokens)
-            same_scenario = (
+            # Prevent weather spotter feeds from corroborating non-weather crimes
+            if cand.feed_id == "weather_skywarn" and incident.triage.incident_type != "Severe Weather / Flooding":
+                continue
+
+            same_scenario = bool(
                 cand.metadata.get("scenario_id")
                 and cand.metadata.get("scenario_id") == incident.feed_item.metadata.get("scenario_id")
             )
 
-            if loc_overlap or same_scenario:
+            cand_tokens = self._extract_location_tokens(cand.raw_text)
+            loc_overlap = bool(target_loc_tokens and target_loc_tokens.intersection(cand_tokens))
+
+            if same_scenario or loc_overlap:
                 weight = 0.25 if cand.feed_id in ("cad_police", "fire_rescue", "ems_scanner") else 0.15
                 corroborating.append((cand, weight))
 
