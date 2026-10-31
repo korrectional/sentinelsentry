@@ -1,5 +1,6 @@
 """
 Geocoder agent resolving location_text to GPS coordinates via Nominatim and local landmark cache.
+Simulates Maritime micro-VM isolation for the geospatial worker.
 """
 
 from __future__ import annotations
@@ -52,7 +53,12 @@ class GeocoderAgent(BaseAgent):
     """
 
     def __init__(self, bus: SwarmEventBus, enable_network: bool = False):
-        super().__init__(agent_name="GeocoderAgent", bus=bus)
+        super().__init__(
+            agent_name="GeocoderAgent",
+            bus=bus,
+            micro_vm_id="maritime-vm-geocoder-01",
+            agent_role="Zero-Latency Landmark Geocoder",
+        )
         self.enable_network = enable_network
         self.resolved_count = 0
         self._memory_cache: Dict[str, GeocodedLocation] = {}
@@ -75,7 +81,6 @@ class GeocoderAgent(BaseAgent):
                     provider="Local Raleigh Landmark Cache",
                 )
             # Match 2: Query contains multiple significant non-generic tokens and ALL appear in key
-            # Require at least 2 significant tokens to prevent false positives from single-token matches
             if len(significant_tokens) >= 2 and len(norm) >= 5:
                 if all(tok in key for tok in significant_tokens):
                     return GeocodedLocation(
@@ -166,4 +171,7 @@ class GeocoderAgent(BaseAgent):
             self.resolved_count += 1
             self.bus.dashboard_items.append(incident)
             count += 1
+
+        self.processed_count = self.resolved_count
+        self.record_heartbeat("working" if count > 0 else "idle")
         return count

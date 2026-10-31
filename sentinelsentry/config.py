@@ -31,17 +31,19 @@ class Settings(BaseModel):
     def _resolve_dynamic_paths(self) -> Settings:
         """Resolve derived paths at instance creation time (not class definition time)."""
         if self.DATA_DIR is None:
+            pkg_data = self.BASE_DIR / "sentinelsentry" / "data"
             local_data = self.BASE_DIR / "data"
-            temp_data = Path(os.environ.get("TEMP", "/tmp")) / "sentinelsentry_data"
-            self.DATA_DIR = local_data if local_data.exists() else temp_data
+            self.DATA_DIR = pkg_data if pkg_data.exists() else (local_data if local_data.exists() else pkg_data)
         if self.FEEDS_DIR is None:
-            self.FEEDS_DIR = self.BASE_DIR / "feeds"
+            pkg_feeds = self.BASE_DIR / "sentinelsentry" / "feeds"
+            local_feeds = self.BASE_DIR / "feeds"
+            self.FEEDS_DIR = pkg_feeds if pkg_feeds.exists() else local_feeds
         if self.TESTS_DIR is None:
             self.TESTS_DIR = self.BASE_DIR / "tests"
         return self
 
-    # Model & LoRA settings
-    BASE_MODEL_NAME: str = "google/gemma-2b-it"
+    # Model & LoRA settings (Gemma 4 Smallest Variant)
+    BASE_MODEL_NAME: str = "google/gemma-4-e2b-it"
     LORA_TARGET_MODULES: List[str] = ["q_proj", "v_proj", "k_proj", "o_proj"]
     LORA_R: int = 16
     LORA_ALPHA: int = 32
@@ -49,8 +51,8 @@ class Settings(BaseModel):
     ADAPTER_OUTPUT_DIR: str = "adapter_model"
     _LOCAL_ADAPTER: Path = BASE_DIR / "adapter_model"
     _TEMP_ADAPTER: Path = Path(os.environ.get("TEMP", "/tmp")) / "sentinelsentry_weights"
-    ADAPTER_DIR: Path = _TEMP_ADAPTER if (_TEMP_ADAPTER / "adapter_model.safetensors").exists() else _LOCAL_ADAPTER
-    HF_REPO_ID: str = "sentinelsentry/gemma-2b-crisis-triage"
+    ADAPTER_DIR: Path = _LOCAL_ADAPTER if (_LOCAL_ADAPTER / "adapter_model.safetensors").exists() else (_TEMP_ADAPTER if (_TEMP_ADAPTER / "adapter_model.safetensors").exists() else _LOCAL_ADAPTER)
+    HF_REPO_ID: str = "sentinelsentry/gemma-4-crisis-triage"
 
     # Agent thresholds
     HIGH_RISK_THRESHOLD: int = 4  # Triggers Verification Agent when casualty_risk_level >= 4
@@ -59,6 +61,12 @@ class Settings(BaseModel):
     NOMINATIM_USER_AGENT: str = "sentinelsentry-crisis-dispatch/0.1"
     SIMULATED_FEED_SERVER_PORT: int = 8765
     SIMULATED_FEED_SERVER_HOST: str = "127.0.0.1"
+
+    # Web Dashboard Server
+    WEB_DASHBOARD_HOST: str = "127.0.0.1"
+    WEB_DASHBOARD_PORT: int = 8000
+    WEB_HOST: str = "127.0.0.1"
+    WEB_PORT: int = 8000
 
     # Default simulated feeds
     FEEDS: List[FeedConfig] = [

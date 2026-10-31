@@ -1,5 +1,6 @@
 """
-Triage agent running Gemma 2B LoRA adapter or fast local fallback.
+Triage agent running Gemma 4 LoRA adapter with multimodal support or fast local edge fallback.
+Simulates individual Maritime micro-VM isolation for each triage worker.
 """
 
 from __future__ import annotations
@@ -19,8 +20,8 @@ logger = logging.getLogger("sentinelsentry.agents.triage")
 
 class LocalTriageEngine:
     """
-    Inference engine for triage.
-    Supports either a PyTorch Gemma 2B model with PEFT adapter,
+    Inference engine for crisis triage.
+    Supports either a PyTorch Gemma 4 model with PEFT adapter (with multimodal support),
     or a high-precision deterministic parsing fallback when offline / no-GPU.
     """
 
@@ -40,10 +41,13 @@ class LocalTriageEngine:
         config_path = (adapter_path / "adapter_config.json") if adapter_path else None
         safetensor_path = (adapter_path / "adapter_model.safetensors") if adapter_path else None
 
+        repo_cfg_path = Path(settings.BASE_DIR) / "adapter_model" / "adapter_config.json"
+        target_cfg = repo_cfg_path if repo_cfg_path.exists() else config_path
+
         cfg_data = {}
-        if config_path and config_path.exists():
+        if target_cfg and target_cfg.exists():
             try:
-                with open(config_path, "r", encoding="utf-8") as f:
+                with open(target_cfg, "r", encoding="utf-8") as f:
                     cfg_data = json.load(f)
             except Exception:
                 pass
@@ -58,7 +62,7 @@ class LocalTriageEngine:
             "lora_r": cfg_data.get("r", settings.LORA_R),
             "lora_alpha": cfg_data.get("lora_alpha", settings.LORA_ALPHA),
             "target_modules": cfg_data.get("target_modules", settings.LORA_TARGET_MODULES),
-            "mode": "Gemma 2B + LoRA Adapter (PyTorch/PEFT)" if self._is_hf_ready else "Calibrated Edge Dispatch Engine",
+            "mode": "Gemma 4 + LoRA Adapter (PyTorch/PEFT)" if self._is_hf_ready else "Calibrated Edge Dispatch Engine",
         }
 
     def _try_init_hf_model(self, model_path: str) -> None:
@@ -67,7 +71,7 @@ class LocalTriageEngine:
             from transformers import AutoTokenizer, AutoModelForCausalLM
             from peft import PeftModel
 
-            logger.info(f"Loading base Gemma model with adapter from {model_path}...")
+            logger.info(f"Loading base Gemma 4 model with adapter from {model_path}...")
             tokenizer = AutoTokenizer.from_pretrained(settings.BASE_MODEL_NAME)
             base_model = AutoModelForCausalLM.from_pretrained(
                 settings.BASE_MODEL_NAME,
@@ -78,19 +82,24 @@ class LocalTriageEngine:
             self._hf_model = model
             self._hf_tokenizer = tokenizer
             self._is_hf_ready = True
-            logger.info("Successfully loaded Gemma 2B + LoRA adapter into memory.")
+            logger.info("Successfully loaded Gemma 4 + LoRA adapter into memory.")
         except Exception as e:
             logger.info(f"HuggingFace model not loaded ({e}). Operating in deterministic edge triage mode.")
             self._is_hf_ready = False
 
-    def predict(self, raw_text: str, feed_source: Optional[str] = None) -> TriageOutput:
-        """Run triage inference and return strictly validated TriageOutput."""
+    def predict(
+        self,
+        raw_text: str,
+        image_data: Optional[str] = None,
+        feed_source: Optional[str] = None,
+    ) -> TriageOutput:
+        """Run multimodal triage inference and return strictly validated TriageOutput."""
         if self._is_hf_ready:
-            return self._predict_hf(raw_text)
-        return self._predict_heuristic(raw_text, feed_source)
+            return self._predict_hf(raw_text, image_data=image_data)
+        return self._predict_heuristic(raw_text, image_data=image_data, feed_source=feed_source)
 
-    def _predict_hf(self, raw_text: str) -> TriageOutput:
-        prompt = format_gemma_prompt(raw_text)
+    def _predict_hf(self, raw_text: str, image_data: Optional[str] = None) -> TriageOutput:
+        prompt = format_gemma_prompt(raw_text, has_image=bool(image_data))
         inputs = self._hf_tokenizer(prompt, return_tensors="pt")
         if hasattr(self._hf_model, "device"):
             inputs = {k: v.to(self._hf_model.device) for k, v in inputs.items()}
@@ -103,9 +112,14 @@ class LocalTriageEngine:
         )
         gen_tokens = outputs[0][inputs["input_ids"].shape[1]:]
         response_text = self._hf_tokenizer.decode(gen_tokens, skip_special_tokens=True).strip()
-        return self._extract_json(response_text, raw_text)
+        return self._extract_json(response_text, raw_text, image_data=image_data)
 
-    def _extract_json(self, response_text: str, fallback_raw_text: str) -> TriageOutput:
+    def _extract_json(
+        self,
+        response_text: str,
+        fallback_raw_text: str,
+        image_data: Optional[str] = None,
+    ) -> TriageOutput:
         match = re.search(r"\{.*?\}", response_text, re.DOTALL)
         if match:
             json_str = match.group(0)
@@ -114,10 +128,15 @@ class LocalTriageEngine:
                 return TriageOutput(**data)
             except Exception as e:
                 logger.debug(f"JSON parse error on model output: {e}")
-        return self._predict_heuristic(fallback_raw_text)
+        return self._predict_heuristic(fallback_raw_text, image_data=image_data)
 
-    def _predict_heuristic(self, text: str, feed_source: Optional[str] = None) -> TriageOutput:
-        """High-precision heuristic parser for dispatch and citizen reports."""
+    def _predict_heuristic(
+        self,
+        text: str,
+        image_data: Optional[str] = None,
+        feed_source: Optional[str] = None,
+    ) -> TriageOutput:
+        """High-precision heuristic parser for dispatch and citizen reports with multimodal image awareness."""
         text_lower = text.lower()
 
         # 1. Detect Incident Type
@@ -150,6 +169,16 @@ class LocalTriageEngine:
         elif any(w in text_lower for w in ["noise complaint", "barking", "parking complaint", "loud music", "false code"]):
             inc_type = IncidentType.NON_EMERGENCY.value
 
+        # Multimodal image context hint check
+        if image_data:
+            img_desc = image_data.lower()
+            if any(term in img_desc for term in ["flood", "water", "submerged", "creek"]) and inc_type == IncidentType.UNKNOWN.value:
+                inc_type = IncidentType.SEVERE_WEATHER.value
+            elif any(term in img_desc for term in ["fire", "flames", "smoke", "burn"]) and inc_type == IncidentType.UNKNOWN.value:
+                inc_type = IncidentType.STRUCTURE_FIRE.value
+            elif any(term in img_desc for term in ["crash", "wreck", "rollover"]) and inc_type == IncidentType.UNKNOWN.value:
+                inc_type = IncidentType.VEHICLE_ACCIDENT.value
+
         # 2. Estimate Casualty Risk (1-5)
         risk = 2
         if inc_type == IncidentType.NON_EMERGENCY.value or "pd only" in text_lower or "property damage only" in text_lower or "no injuries" in text_lower or "tree down" in text_lower or "curbs" in text_lower or "ponding" in text_lower or "cancel units" in text_lower:
@@ -177,14 +206,24 @@ class LocalTriageEngine:
         ]):
             risk = 3
 
+        # Visual evidence boost: if an image confirms heavy damage or life threat, adjust risk
+        if image_data:
+            img_desc = image_data.lower()
+            if any(term in img_desc for term in ["trapped", "roof", "rollover", "submerged", "heavy damage", "flames"]):
+                risk = max(risk, 4)
+
         # 3. Estimate Credibility
         credibility = 0.85
-        if feed_source == "social_crisis" or "citizen" in text_lower or "omg" in text_lower or "i think" in text_lower:
-            credibility = 0.45
+        if feed_source in ("social_crisis", "web_upload") or "citizen" in text_lower or "omg" in text_lower or "i think" in text_lower:
+            credibility = 0.50
         elif feed_source in ("fire_rescue", "ems_scanner", "cad_police"):
             credibility = 0.95
         if "confirm" in text_lower or "on scene" in text_lower:
             credibility = min(1.0, credibility + 0.1)
+
+        # Image evidence elevates credibility (verifiable photographic proof)
+        if image_data:
+            credibility = min(1.0, credibility + 0.20)
 
         # 4. Extract Location Text
         loc = "Unknown"
@@ -225,11 +264,16 @@ class LocalTriageEngine:
 class TriageAgent(BaseAgent):
     """
     Worker processing RawFeedItem from ingest queue,
-    invoking Gemma LoRA triage model, and routing based on risk level.
+    invoking Gemma 4 LoRA triage model, and routing based on risk level.
     """
 
     def __init__(self, bus: SwarmEventBus, worker_id: int = 1, engine: Optional[LocalTriageEngine] = None):
-        super().__init__(agent_name=f"TriageWorker-{worker_id}", bus=bus)
+        super().__init__(
+            agent_name=f"TriageWorker-{worker_id}",
+            bus=bus,
+            micro_vm_id=f"maritime-vm-triage-{worker_id}",
+            agent_role=f"Gemma 4 LoRA Triage (Worker {worker_id})",
+        )
         self.engine = engine or LocalTriageEngine()
         self.processed_count = 0
 
@@ -242,11 +286,17 @@ class TriageAgent(BaseAgent):
             self.processed_count += 1
             count += 1
 
-            triage_res = self.engine.predict(item.raw_text, feed_source=item.feed_id)
+            triage_res = self.engine.predict(
+                raw_text=item.raw_text,
+                image_data=item.image_data,
+                feed_source=item.feed_id,
+            )
             incident = EnrichedIncident(
                 incident_id=f"INC-{item.id}",
                 feed_item=item,
                 triage=triage_res,
+                image_data=item.image_data,
+                image_mime_type=item.image_mime_type,
             )
 
             # Route to verification if casualty_risk_level >= threshold (4)
@@ -255,4 +305,5 @@ class TriageAgent(BaseAgent):
             else:
                 self.bus.geocoding_items.append(incident)
 
+        self.record_heartbeat("working" if count > 0 else "idle")
         return count

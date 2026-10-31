@@ -1,12 +1,13 @@
 """
 Alert and dashboard agent consolidating incidents for human dispatcher decision support.
+Simulates Maritime micro-VM isolation for the central alert hub.
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from rich.console import Console
 from rich.table import Table
 
@@ -23,7 +24,12 @@ class AlertDashboardAgent(BaseAgent):
     """
 
     def __init__(self, bus: SwarmEventBus, console: Optional[Console] = None):
-        super().__init__(agent_name="AlertDashboardAgent", bus=bus)
+        super().__init__(
+            agent_name="AlertDashboardAgent",
+            bus=bus,
+            micro_vm_id="maritime-vm-alerter-01",
+            agent_role="Dispatcher Decision-Support Hub",
+        )
         self.console = console or Console(legacy_windows=False, force_terminal=True)
         self.incidents: Dict[str, EnrichedIncident] = {}
         self.escalated_ids: List[str] = []
@@ -67,6 +73,9 @@ class AlertDashboardAgent(BaseAgent):
             incident = self.bus.dashboard_items.popleft()
             self.process_incident(incident)
             count += 1
+
+        self.processed_count = self.stats["total_processed"]
+        self.record_heartbeat("working" if count > 0 else "idle")
         return count
 
     def render_board_table(self, limit: int = 10) -> Table:
@@ -140,8 +149,23 @@ class AlertDashboardAgent(BaseAgent):
         """Returns incidents requiring urgent human dispatcher action."""
         return [
             inc for inc in self.incidents.values()
-            if inc.is_escalated and inc.human_status == "ESCALATED"
+            if inc.is_escalated
         ]
+
+    def acknowledge_incident(self, incident_id: str) -> EnrichedIncident:
+        """Dispatcher action: Acknowledge an active emergency escalation."""
+        inc = self.incidents.get(incident_id)
+        if not inc:
+            raise KeyError(f"Incident '{incident_id}' not found.")
+        inc.is_escalated = False
+        inc.human_status = "ACKNOWLEDGED"
+        inc.metadata["acknowledged_at"] = datetime.now(timezone.utc).isoformat()
+        if incident_id in self.escalated_ids:
+            self.escalated_ids.remove(incident_id)
+        self.stats["escalated_count"] = max(0, self.stats["escalated_count"] - 1)
+        self.stats["routine_count"] += 1
+        logger.info(f"[Dispatcher] Acknowledged incident {incident_id}")
+        return inc
 
     def dispatch_incident(
         self,
@@ -156,6 +180,8 @@ class AlertDashboardAgent(BaseAgent):
         assigned = units or ["Engine 4", "Medic 2", "Ladder 1"]
         inc.human_status = f"DISPATCHED ({', '.join(assigned)})"
         inc.is_escalated = False
+        if incident_id in self.escalated_ids:
+            self.escalated_ids.remove(incident_id)
         if dispatcher_notes:
             inc.metadata["dispatcher_notes"] = dispatcher_notes
         inc.metadata["dispatched_units"] = assigned
@@ -170,6 +196,8 @@ class AlertDashboardAgent(BaseAgent):
             raise KeyError(f"Incident '{incident_id}' not found.")
         inc.human_status = f"DISMISSED ({reason})"
         inc.is_escalated = False
+        if incident_id in self.escalated_ids:
+            self.escalated_ids.remove(incident_id)
         inc.metadata["dismissed_reason"] = reason
         inc.metadata["dismissed_at"] = datetime.now(timezone.utc).isoformat()
         logger.info(f"[Dispatcher] Dismissed incident {incident_id}: {reason}")
@@ -183,30 +211,60 @@ class AlertDashboardAgent(BaseAgent):
         inc.is_escalated = True
         inc.human_status = f"MANUALLY ESCALATED ({reason})"
         inc.metadata["manual_escalation_reason"] = reason
+        if incident_id not in self.escalated_ids:
+            self.escalated_ids.append(incident_id)
         logger.info(f"[Dispatcher] Manually escalated incident {incident_id}: {reason}")
         return inc
 
     def render_incident_detail(self, incident_id: str) -> str:
-        """Format a rich detailed inspection card for an incident."""
+        """Render a formatted string or card detailing a specific incident."""
         inc = self.incidents.get(incident_id)
         if not inc:
-            return f"Incident '{incident_id}' not found."
-
-        corrob_str = "None"
+            return f"Incident {incident_id} not found."
+        lines = [
+            f"=== INCIDENT DETAIL: {inc.incident_id} ===",
+            f"Type: {inc.triage.incident_type}",
+            f"Casualty Risk Level: {inc.triage.casualty_risk_level}/5",
+            f"Credibility Score: {inc.triage.credibility_score:.2f}",
+            f"Location: {inc.triage.location_text}",
+            f"Status: {inc.human_status}",
+            f"Escalated: {inc.is_escalated}",
+            f"Feed: {inc.feed_item.feed_id} ({inc.feed_item.feed_name})",
+            f"Raw Text: {inc.feed_item.raw_text}",
+        ]
         if inc.verification and inc.verification.corroborating_feed_ids:
-            corrob_str = f"{len(inc.verification.corroborating_feed_ids)} feeds: {', '.join(inc.verification.corroborating_feed_ids)}"
+            lines.append(f"Corroborating Feeds: {', '.join(inc.verification.corroborating_feed_ids)}")
+        if "dispatched_units" in inc.metadata:
+            lines.append(f"Dispatched Units: {', '.join(inc.metadata['dispatched_units'])}")
+        return "\n".join(lines)
 
-        gps_str = f"({inc.geocoded.latitude}, {inc.geocoded.longitude})" if (inc.geocoded and inc.geocoded.is_resolved) else "Unresolved"
-
-        return (
-            f"\n[bold yellow]=== INCIDENT DETAIL: {inc.incident_id} ===[/bold yellow]\n"
-            f" • Feed:           {inc.feed_item.feed_id} ({inc.feed_item.title})\n"
-            f" • Raw Dispatch:   \"{inc.feed_item.raw_text}\"\n"
-            f" • Incident Type:  {inc.triage.incident_type}\n"
-            f" • Casualty Risk:  {inc.triage.casualty_risk_level}/5\n"
-            f" • Credibility:    {inc.triage.credibility_score:.2f}\n"
-            f" • Location:       {inc.triage.location_text} -> GPS {gps_str}\n"
-            f" • Status:         {inc.human_status}\n"
-            f" • Corroboration:  {corrob_str}\n"
-            f" • Notes:          {inc.verification.verification_notes if inc.verification else 'N/A'}\n"
-        )
+    def get_incidents_payload(self) -> List[Dict[str, Any]]:
+        """Serialize incidents for the web dashboard."""
+        result = []
+        for inc in sorted(self.incidents.values(), key=lambda x: (x.is_escalated, x.triage.casualty_risk_level, x.created_at), reverse=True):
+            lat = inc.geocoded.latitude if (inc.geocoded and inc.geocoded.latitude is not None) else 35.7796
+            lon = inc.geocoded.longitude if (inc.geocoded and inc.geocoded.longitude is not None) else -78.6382
+            result.append({
+                "incident_id": inc.incident_id,
+                "feed_id": inc.feed_item.feed_id,
+                "feed_name": inc.feed_item.feed_name,
+                "title": inc.feed_item.title or inc.triage.incident_type,
+                "raw_text": inc.feed_item.raw_text,
+                "time": inc.created_at.strftime("%H:%M:%S"),
+                "incident_type": inc.triage.incident_type,
+                "casualty_risk_level": inc.triage.casualty_risk_level,
+                "credibility_score": round(inc.triage.credibility_score, 2),
+                "location_text": inc.triage.location_text,
+                "display_name": inc.geocoded.display_name if (inc.geocoded and inc.geocoded.display_name) else inc.triage.location_text,
+                "latitude": lat,
+                "longitude": lon,
+                "is_geocoded": bool(inc.geocoded and inc.geocoded.is_resolved),
+                "is_escalated": inc.is_escalated,
+                "human_status": inc.human_status,
+                "image_data": inc.image_data,
+                "image_mime_type": inc.image_mime_type,
+                "corroborating_feed_ids": inc.verification.corroborating_feed_ids if inc.verification else [],
+                "confidence_delta": inc.verification.confidence_delta if inc.verification else 0.0,
+                "verification_notes": inc.verification.verification_notes if inc.verification else "",
+            })
+        return result

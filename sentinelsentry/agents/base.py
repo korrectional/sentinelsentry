@@ -1,6 +1,7 @@
 """
 Base classes, event bus, and coordinator for concurrent agent swarm.
 Supports both concurrent asyncio tasks and deterministic discrete step execution.
+Models Maritime micro-VM isolation for each individual agent.
 """
 
 from __future__ import annotations
@@ -60,21 +61,45 @@ class SwarmEventBus:
 class BaseAgent(ABC):
     """
     Abstract worker agent supporting both discrete sync stepping and async task execution.
+    Models an isolated worker running inside a Maritime micro-VM.
     """
 
-    def __init__(self, agent_name: str, bus: SwarmEventBus):
+    def __init__(
+        self,
+        agent_name: str,
+        bus: SwarmEventBus,
+        micro_vm_id: Optional[str] = None,
+        agent_role: Optional[str] = None,
+    ):
         self.agent_name = agent_name
         self.bus = bus
+        self.micro_vm_id = micro_vm_id or f"maritime-vm-{agent_name.lower().replace(' ', '-')}"
+        self.agent_role = agent_role or "Maritime Swarm Worker"
+        self.status: str = "idle"  # idle, working, error
+        self.processed_count: int = 0
+        self.error_count: int = 0
+        self.last_heartbeat: datetime = datetime.now(timezone.utc)
         self._running = False
         self._task: Optional[asyncio.Task] = None
 
+    def record_heartbeat(self, status: str = "idle") -> None:
+        self.last_heartbeat = datetime.now(timezone.utc)
+        self.status = status
+
+    def get_telemetry(self) -> Dict[str, Any]:
+        return {
+            "name": self.agent_name,
+            "role": self.agent_role,
+            "micro_vm_id": self.micro_vm_id,
+            "status": self.status,
+            "processed_count": self.processed_count,
+            "error_count": self.error_count,
+            "last_heartbeat": self.last_heartbeat.strftime("%H:%M:%S"),
+        }
+
     @abstractmethod
     def step_sync(self, max_items: Optional[int] = None) -> int:
-        """Process one batch or available items synchronously. Returns number of items processed.
-        
-        Args:
-            max_items: Optional cap on items to process in this step. None means process all available.
-        """
+        """Process one batch or available items synchronously. Returns number of items processed."""
         pass
 
 
@@ -109,6 +134,34 @@ class SwarmCoordinator:
 
     def set_dashboard_agent(self, agent: Any) -> None:
         self.dashboard_agent = agent
+
+    def get_swarm_telemetry(self) -> Dict[str, Any]:
+        """Aggregate telemetry from all agents and shared queues for Maritime UI."""
+        agents = []
+        for ing in self.ingest_agents:
+            if hasattr(ing, "get_telemetry"):
+                agents.append(ing.get_telemetry())
+        for trg in self.triage_workers:
+            if hasattr(trg, "get_telemetry"):
+                agents.append(trg.get_telemetry())
+        if self.verification_agent and hasattr(self.verification_agent, "get_telemetry"):
+            agents.append(self.verification_agent.get_telemetry())
+        if self.geocoder_agent and hasattr(self.geocoder_agent, "get_telemetry"):
+            agents.append(self.geocoder_agent.get_telemetry())
+        if self.dashboard_agent and hasattr(self.dashboard_agent, "get_telemetry"):
+            agents.append(self.dashboard_agent.get_telemetry())
+
+        return {
+            "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S"),
+            "agents": agents,
+            "queue_depths": {
+                "ingest": len(self.bus.ingest_items),
+                "verification": len(self.bus.verification_items),
+                "geocoding": len(self.bus.geocoding_items),
+                "dashboard": len(self.bus.dashboard_items),
+            },
+            "recent_buffer_count": len(self.bus.recent_items_buffer),
+        }
 
     def step(self) -> Dict[str, int]:
         """
@@ -183,6 +236,7 @@ class SwarmCoordinator:
                 try:
                     agent.step_sync()
                 except Exception as exc:
+                    agent.error_count += 1
                     logger.error(f"[{agent.agent_name}] Error in async loop: {exc}")
                 await asyncio.sleep(poll_interval)
             agent._running = False

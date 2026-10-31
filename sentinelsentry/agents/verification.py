@@ -1,6 +1,7 @@
 """
 Verification agent triggered when casualty_risk_level >= 4.
 Performs cross-feed corroboration and adjusts credibility score.
+Simulates Maritime micro-VM isolation for the verification worker.
 """
 
 from __future__ import annotations
@@ -24,7 +25,12 @@ class VerificationAgent(BaseAgent):
     """
 
     def __init__(self, bus: SwarmEventBus):
-        super().__init__(agent_name="VerificationAgent", bus=bus)
+        super().__init__(
+            agent_name="VerificationAgent",
+            bus=bus,
+            micro_vm_id="maritime-vm-verifier-01",
+            agent_role="Cross-Feed Corroborator",
+        )
         self.verifications_completed = 0
         self.escalations_triggered = 0
 
@@ -69,7 +75,6 @@ class VerificationAgent(BaseAgent):
         target_loc_text = incident.triage.location_text.lower().strip()
         has_valid_target_loc = target_loc_text != "unknown" and len(target_loc_text) > 3
         if not has_valid_target_loc:
-            # Cannot cross-corroborate an incident with an unknown location
             return []
 
         target_loc_tokens = self._extract_location_tokens(incident.triage.location_text)
@@ -88,15 +93,12 @@ class VerificationAgent(BaseAgent):
             if dt_seconds > settings.CORROBORATION_TIME_WINDOW_SECONDS:
                 continue
 
-            # Prevent weather spotter feeds from corroborating non-weather crimes
             if cand.feed_id == "weather_skywarn" and incident.triage.incident_type != "Severe Weather / Flooding":
                 continue
 
-            # Check location overlap
             cand_tokens = self._extract_location_tokens(cand.raw_text)
             loc_overlap = bool(target_loc_tokens.intersection(cand_tokens))
 
-            # Semantic / scenario compatibility check
             same_scenario = bool(
                 cand.metadata.get("scenario_id")
                 and cand.metadata.get("scenario_id") == incident.feed_item.metadata.get("scenario_id")
@@ -128,7 +130,7 @@ class VerificationAgent(BaseAgent):
             adjusted_cred = min(1.0, original_cred + total_delta)
             notes = (
                 f"VERIFIED: Corroborated by {len(corroborators)} cross-stream report(s) "
-                f"({', '.join(set(corrob_feed_ids))}). Credibility boosted from {original_cred:.2f} to {adjusted_cred:.2f}."
+                f"({', '.join(corrob_feed_ids)}). Credibility boosted from {original_cred:.2f} to {adjusted_cred:.2f}."
             )
             report = CorroborationReport(
                 triggered=True,
@@ -154,8 +156,6 @@ class VerificationAgent(BaseAgent):
                 verified_at=datetime.now(timezone.utc),
             )
 
-        # Update triage with adjusted credibility via copy (never mutate in-place;
-        # re-verification of the same incident would otherwise cause runaway inflation)
         incident.triage = incident.triage.model_copy(update={"credibility_score": adjusted_cred})
         incident.verification = report
 
@@ -169,8 +169,8 @@ class VerificationAgent(BaseAgent):
             elif is_unknown_loc:
                 incident.human_status = "NEEDS REVIEW (Location Unresolved)"
             else:
-                incident.human_status = "NEEDS REVIEW (Unclassified Emergency)"
-        elif incident.triage.casualty_risk_level >= settings.HIGH_RISK_THRESHOLD and adjusted_cred >= settings.ESCALATION_MIN_CREDIBILITY:
+                incident.human_status = "NEEDS REVIEW (Unclassified Category)"
+        elif adjusted_cred >= settings.ESCALATION_MIN_CREDIBILITY and incident.triage.casualty_risk_level >= settings.HIGH_RISK_THRESHOLD:
             incident.is_escalated = True
             incident.human_status = "ESCALATED"
             self.escalations_triggered += 1
@@ -189,4 +189,7 @@ class VerificationAgent(BaseAgent):
             verified = self.verify_incident_sync(incident)
             self.bus.geocoding_items.append(verified)
             count += 1
+
+        self.processed_count = self.verifications_completed
+        self.record_heartbeat("working" if count > 0 else "idle")
         return count

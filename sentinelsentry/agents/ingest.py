@@ -1,5 +1,6 @@
 """
 Ingest agents running per feed to poll streams and push to shared queue.
+Simulates individual Maritime micro-VM isolation for each ingest worker.
 """
 
 from __future__ import annotations
@@ -26,14 +27,19 @@ class IngestAgent(BaseAgent):
         bus: SwarmEventBus,
         custom_fetcher: Optional[Callable[[], List[RawFeedItem]]] = None,
     ):
-        super().__init__(agent_name=f"IngestAgent[{feed_config.id}]", bus=bus)
+        super().__init__(
+            agent_name=f"IngestAgent[{feed_config.id}]",
+            bus=bus,
+            micro_vm_id=f"maritime-vm-ingest-{feed_config.id.replace('_', '-')}",
+            agent_role=f"Feed Ingestion ({feed_config.name})",
+        )
         self.config = feed_config
         self.client = RSSFeedClient(feed_config)
         self.custom_fetcher = custom_fetcher
         self.total_ingested = 0
 
     def step_sync(self, max_items: Optional[int] = None) -> int:
-        """Synchronously poll the feed (using custom_fetcher, feed URL, or XML parser) and push new items."""
+        """Synchronously poll the feed and push new items."""
         if self.custom_fetcher:
             raw_items = self.custom_fetcher()
         elif self.config.url and self.config.url.startswith("http"):
@@ -47,6 +53,7 @@ class IngestAgent(BaseAgent):
                 logger.debug(f"[{self.agent_name}] Feed fetch failed ({e})")
                 raw_items = []
         else:
+            self.record_heartbeat("idle")
             return 0
 
         count = 0
@@ -57,12 +64,15 @@ class IngestAgent(BaseAgent):
             if not self.client.dedup_cache.is_seen(item.id):
                 self.client.dedup_cache.mark_seen(item.id)
                 self.total_ingested += 1
+                self.processed_count = self.total_ingested
                 count += 1
                 # Buffer in recent items for cross-feed verification
                 self.bus.record_recent_item_sync(item)
                 # Enqueue for triage
                 self.bus.ingest_items.append(item)
                 logger.info(f"[{self.agent_name}] Ingested item {item.id}: {item.title}")
+
+        self.record_heartbeat("working" if count > 0 else "idle")
         return count
 
     async def run_async_loop(self) -> None:
@@ -81,5 +91,8 @@ class IngestAgent(BaseAgent):
                     self.bus.record_recent_item_sync(item)
                     self.bus.ingest_items.append(item)
                     self.total_ingested += 1
+                    self.processed_count = self.total_ingested
+                    self.record_heartbeat("working")
         except asyncio.CancelledError:
             self._running = False
+            self.record_heartbeat("idle")

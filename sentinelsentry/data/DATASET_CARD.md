@@ -32,4 +32,4 @@ In accordance with open AI transparency:
 3. **Location Extraction**: Verified to represent realistic roadway intersections, highway mile markers, and civic landmarks (calibrated against Wake County, NC GIS benchmarks).
 
 ## Intended Use
-Designed for fine-tuning compact LLMs (Gemma 2B) using QLoRA/PEFT to run real-time edge triage swarms for human dispatcher decision support. It is not intended for autonomous emergency dispatch without human-in-the-loop verification.
+Designed for fine-tuning compact LLMs (Gemma 4) using QLoRA/PEFT to run real-time edge triage swarms inside Maritime micro-VMs for human dispatcher decision support. It is not intended for autonomous emergency dispatch without human-in-the-loop verification.

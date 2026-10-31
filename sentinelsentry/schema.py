@@ -25,7 +25,7 @@ class IncidentType(str, Enum):
 
 class TriageOutput(BaseModel):
     """
-    Strict output schema emitted by Gemma 2B LoRA adapter:
+    Strict output schema emitted by Gemma 4 LoRA adapter:
     {"incident_type": "...", "casualty_risk_level": 1-5, "credibility_score": 0-1, "location_text": "..."}
     """
     incident_type: str = Field(
@@ -105,10 +105,10 @@ class TriageOutput(BaseModel):
 
 class RawFeedItem(BaseModel):
     """
-    Raw item pulled by Ingest Agents from RSS / dispatch feeds.
+    Raw item pulled by Ingest Agents from RSS / dispatch feeds or submitted via web UI.
     """
     id: str = Field(..., description="Unique deterministic identifier (hash or GUID)")
-    feed_id: str = Field(..., description="Feed identifier, e.g. 'cad_police', 'fire_rescue'")
+    feed_id: str = Field(..., description="Feed identifier, e.g. 'cad_police', 'fire_rescue', 'web_upload'")
     feed_name: str = Field(..., description="Human-readable feed title")
     title: str = Field("", description="Title from RSS item or brief dispatch headline")
     raw_text: str = Field(..., description="Messy dispatch or report text")
@@ -118,6 +118,8 @@ class RawFeedItem(BaseModel):
     )
     link: Optional[str] = Field(None, description="Original URL or resource link")
     guid: Optional[str] = Field(None, description="Feed item GUID")
+    image_data: Optional[str] = Field(None, description="Optional base64 image data or URL (flooded road, fire, damage)")
+    image_mime_type: Optional[str] = Field("image/jpeg", description="MIME type for attached image")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional feed metadata")
 
 
@@ -157,7 +159,9 @@ class EnrichedIncident(BaseModel):
     geocoded: Optional[GeocodedLocation] = None
     verification: Optional[CorroborationReport] = None
     is_escalated: bool = False
-    human_status: str = "PENDING_REVIEW"  # PENDING_REVIEW, DISPATCHED, DISMISSED, ESCALATED
+    human_status: str = "PENDING_REVIEW"  # PENDING_REVIEW, DISPATCHED, DISMISSED, ESCALATED, ACKNOWLEDGED
+    image_data: Optional[str] = None
+    image_mime_type: Optional[str] = "image/jpeg"
     metadata: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
