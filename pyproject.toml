@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentinelsentry"
+version = "0.1.0"
+description = "SentinelSentry: LoRA-Tuned Gemma for Crisis Triage & Multi-Agent Incident Swarm"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0.0",
+    "feedparser>=6.0.10",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+    "httpx>=0.27.0",
+    "rich>=13.7.0",
+    "jinja2>=3.1.3",
+]
+
+[project.optional-dependencies]
+training = [
+    "torch>=2.2.0",
+    "transformers>=4.40.0",
+    "peft>=0.10.0",
+    "bitsandbytes>=0.43.0",
+    "trl>=0.8.0",
+    "datasets>=2.18.0",
+    "accelerate>=0.28.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
