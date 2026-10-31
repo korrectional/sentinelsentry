@@ -7,7 +7,13 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field, model_validator
+
+# Automatically load environment variables from project .env if present
+_env_path = Path(__file__).resolve().parent.parent / ".env"
+if _env_path.exists():
+    load_dotenv(_env_path, override=False)
 
 
 class FeedConfig(BaseModel):

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import pytest
 from fastapi import HTTPException
 
 from sentinelsentry.config import settings
@@ -127,7 +128,7 @@ def test_speed_control_boundaries():
 
 
 def test_scripted_demo_full_lifecycle():
-    """Verify the 90-second crisis burst scenario completes cleanly."""
+    """Verify the crisis scenario completes cleanly across multiple feeds."""
     reset_demo()
 
     # Run the demo sequence
@@ -136,39 +137,6 @@ def test_scripted_demo_full_lifecycle():
     assert state.is_demo_running is False
 
     # Check incidents payload
-    inc_res = get_incidents()
-    inc_data = json.loads(inc_res.body.decode("utf-8"))
-    incidents = inc_data["incidents"]
-
-    # Verify high-risk fire was ingested, corroborated, and escalated
-    fire_incidents = [i for i in incidents if "Saunders" in i["location_text"] or "Saunders" in i["display_name"]]
-    assert len(fire_incidents) >= 1
-    main_fire = fire_incidents[0]
-
-    assert main_fire["casualty_risk_level"] >= 4
-    # Cross-feed corroboration was recorded
-    assert len(main_fire["corroborating_feed_ids"]) >= 1
-    # Credibility was boosted
-    assert main_fire["credibility_score"] >= 0.85
-    # Geocoder resolved coordinates
-    assert main_fire["is_geocoded"] is True
-    assert main_fire["latitude"] is not None
-    assert main_fire["longitude"] is not None
-
-    # Reset speed back to normal 1.0x
-    set_demo_speed(SpeedControlRequest(multiplier=1.0))
-
-
-@pytest.mark.asyncio
-async def test_async_scripted_demo_progression():
-    """Verify asynchronous progression of events across multiple feeds during demo run."""
-    reset_demo()
-    set_demo_speed(SpeedControlRequest(multiplier=100.0))
-
-    await run_scripted_demo_sequence()
-
-    assert state.is_demo_running is False
-
     inc_res = get_incidents()
     inc_data = json.loads(inc_res.body.decode("utf-8"))
     incidents = inc_data["incidents"]
@@ -184,6 +152,21 @@ async def test_async_scripted_demo_progression():
     assert "social_crisis" in feed_sources
     assert "ems_scanner" in feed_sources
     assert "weather_skywarn" in feed_sources
+
+    # Verify high-risk fire was ingested, corroborated, and escalated
+    fire_incidents = [i for i in incidents if "Saunders" in i["location_text"] or "Saunders" in i["display_name"]]
+    assert len(fire_incidents) >= 1
+    main_fire = fire_incidents[0]
+
+    assert main_fire["casualty_risk_level"] >= 4
+    # Cross-feed corroboration was recorded
+    assert len(main_fire["corroborating_feed_ids"]) >= 1
+    # Credibility was boosted
+    assert main_fire["credibility_score"] >= 0.85
+    # Geocoder resolved coordinates
+    assert main_fire["is_geocoded"] is True
+    assert main_fire["latitude"] is not None
+    assert main_fire["longitude"] is not None
 
     # Reset speed back to normal 1.0x
     set_demo_speed(SpeedControlRequest(multiplier=1.0))

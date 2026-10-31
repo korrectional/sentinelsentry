@@ -66,7 +66,7 @@ def test_gemma4_multimodal_triage():
 
 
 def test_web_dashboard_html_rendering():
-    """Verify dashboard HTML template renders with required judged-demo components."""
+    """Verify dashboard HTML template renders with required judged-demo components and Leaflet map setup."""
     response = serve_dashboard()
     assert response.status_code == 200
     html = response.body.decode("utf-8")
@@ -76,6 +76,27 @@ def test_web_dashboard_html_rendering():
     assert "leaflet" in html.lower()
     assert "maritime" in html.lower()
     assert "Escalation" in html
+    assert "#map" in html
+    assert "min-height" in html
+    assert "tileerror" in html
+    assert "invalidateSize" in html
+
+
+def test_map_tile_url_carto_key_formatting(monkeypatch):
+    """Verify CARTO API key is injected correctly with both key and api_key parameters, and works without a key."""
+    # 1. With API key
+    monkeypatch.setattr(settings, "CARTO_API_KEY", "test_carto_key_12345")
+    resp_with_key = serve_dashboard()
+    html_with_key = resp_with_key.body.decode("utf-8")
+    assert "key=test_carto_key_12345" in html_with_key
+    assert "api_key=test_carto_key_12345" in html_with_key
+
+    # 2. Without API key (defaults cleanly to public DarkMatter tiles)
+    monkeypatch.setattr(settings, "CARTO_API_KEY", None)
+    resp_no_key = serve_dashboard()
+    html_no_key = resp_no_key.body.decode("utf-8")
+    assert "test_carto_key_12345" not in html_no_key
+    assert "basemaps.cartocdn.com/dark_all" in html_no_key
 
 
 def test_swarm_telemetry_maritime_vms():

@@ -48,6 +48,12 @@
 
   <style>
     /* Custom Leaflet Map styling for Dark Operations Center */
+    #map {
+      width: 100% !important;
+      height: 100% !important;
+      min-height: 450px !important;
+      background: #0f172a;
+    }
     .leaflet-container {
       background: #0f172a !important;
       font-family: inherit;
@@ -282,7 +288,7 @@
       </div>
 
       <!-- Map Container -->
-      <div id="map" class="flex-1 w-full h-full"></div>
+      <div id="map" class="flex-1 w-full h-full" style="min-height: 450px;"></div>
     </section>
 
     <!-- COLUMN 3: LIVE FEED & DISPATCHER DECISION CARDS -->
@@ -600,12 +606,34 @@
         ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
         : configuredTileUrl;
 
-      L.tileLayer(tileUrl, {
+      const primaryLayer = L.tileLayer(tileUrl, {
         maxZoom: 18,
         subdomains: 'abcd',
-      }).addTo(map);
+        attribution: '&copy; CARTO &copy; OpenStreetMap'
+      });
 
+      // Robust fallback if CARTO blocks, errors, or fails authentication
+      let fallbackTriggered = false;
+      primaryLayer.on('tileerror', function() {
+        if (!fallbackTriggered) {
+          fallbackTriggered = true;
+          console.warn('CARTO tile fetch encountered an issue. Gracefully falling back to OpenStreetMap tiles.');
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            subdomains: ['a', 'b', 'c'],
+            attribution: '&copy; OpenStreetMap contributors'
+          }).addTo(map);
+        }
+      });
+
+      primaryLayer.addTo(map);
       markersLayer = L.layerGroup().addTo(map);
+
+      // Force Leaflet to recalculate container dimensions once DOM layout stabilizes
+      setTimeout(() => { if (map) map.invalidateSize(); }, 100);
+      setTimeout(() => { if (map) map.invalidateSize(); }, 400);
+      window.addEventListener('resize', () => { if (map) map.invalidateSize(); });
+      window.addEventListener('load', () => { if (map) map.invalidateSize(); });
     }
 
     // Color mapper for Risk 1-5
