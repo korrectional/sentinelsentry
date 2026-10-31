@@ -74,14 +74,15 @@ class AlertDashboardAgent(BaseAgent):
             title="[ALERT] SentinelSentry: Live Dispatcher Decision-Support Board",
             header_style="bold cyan",
             show_lines=True,
+            expand=False,
         )
-        table.add_column("Time", justify="center", style="dim", width=10)
-        table.add_column("Feed", justify="center", width=14)
-        table.add_column("Incident Type", style="bold", width=22)
-        table.add_column("Risk", justify="center", width=8)
-        table.add_column("Cred", justify="center", width=8)
-        table.add_column("Location", width=25)
-        table.add_column("Status / Corroboration", width=35)
+        table.add_column("Time", justify="center", style="dim", min_width=8, max_width=10, no_wrap=True)
+        table.add_column("Feed", justify="center", min_width=10, max_width=15, no_wrap=True)
+        table.add_column("Incident Type", style="bold", min_width=14, max_width=22)
+        table.add_column("Risk", justify="center", min_width=7, max_width=9, no_wrap=True)
+        table.add_column("Cred", justify="center", min_width=5, max_width=6, no_wrap=True)
+        table.add_column("Location", min_width=14, max_width=24)
+        table.add_column("Status / Corroboration", min_width=16, max_width=30)
 
         sorted_incidents = sorted(
             self.incidents.values(),
@@ -105,15 +106,16 @@ class AlertDashboardAgent(BaseAgent):
             cred_str = f"[bold]{cred_val:.2f}[/bold]" if cred_val >= 0.8 else f"{cred_val:.2f}"
 
             loc_str = inc.geocoded.display_name if (inc.geocoded and inc.geocoded.is_resolved) else inc.triage.location_text
-            if len(loc_str) > 24:
-                loc_str = loc_str[:22] + ".."
+            if len(loc_str) > 23:
+                loc_str = loc_str[:21] + ".."
 
             if inc.is_escalated:
-                corrob_text = f"[bold red]** ESCALATED **[/bold red]\n"
+                corrob_text = "[bold red]** ESCALATED **[/bold red]"
                 if inc.verification and inc.verification.corroborating_feed_ids:
-                    corrob_text += f"[yellow]Corrob: {','.join(inc.verification.corroborating_feed_ids)}[/yellow]"
+                    corrobs = ", ".join(inc.verification.corroborating_feed_ids)
+                    corrob_text += f"\n[yellow]Corrob: {corrobs}[/yellow]"
                 else:
-                    corrob_text += "[dim]Solo extreme alert[/dim]"
+                    corrob_text += "\n[dim]Solo extreme alert[/dim]"
             else:
                 corrob_text = f"[dim green]{inc.human_status}[/dim green]"
 

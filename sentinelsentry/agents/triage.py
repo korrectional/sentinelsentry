@@ -97,7 +97,10 @@ class LocalTriageEngine:
                 inc_type = IncidentType.NON_EMERGENCY.value
             else:
                 inc_type = IncidentType.STRUCTURE_FIRE.value
-        elif any(w in text_lower for w in ["10-50", "accident", "crash", "rollover", "extrication", "mva", "collision", "pinned"]):
+        elif (
+            any(w in text_lower for w in ["10-50", "accident", "crash", "rollover", "extrication", "mva", "collision", "pinned"])
+            or ("trauma" in text_lower and any(hw in text_lower for hw in ["i-40", "i-440", "i-540", "i-85", "highway", "hwy", "exit", "mile marker", "mm "]))
+        ):
             inc_type = IncidentType.VEHICLE_ACCIDENT.value
         elif any(w in text_lower for w in ["flood", "water rising", "skywarn", "swiftwater", "submerged", "creek overflowing"]):
             inc_type = IncidentType.SEVERE_WEATHER.value
@@ -105,20 +108,25 @@ class LocalTriageEngine:
             inc_type = IncidentType.HAZMAT.value
         elif any(w in text_lower for w in ["gas leak", "hazmat", "10-75", "lel meter", "pipeline", "odor of gas"]):
             inc_type = IncidentType.GAS_LEAK.value
-        elif any(w in text_lower for w in ["cpr", "cardiac", "echo response", "unresponsive", "10-54", "medical"]):
+        elif any(w in text_lower for w in [
+            "cpr", "cardiac", "echo response", "unresponsive", "10-54", "medical",
+            "trauma", "patient", "patients", "pediatric", "life flight", "overdose",
+            "ambulance", "unconscious", "stroke", "respiratory", "ems dispatch",
+            "red tag", "yellow tag"
+        ]):
             inc_type = IncidentType.MEDICAL_EMERGENCY.value
         elif any(w in text_lower for w in ["shots", "gunshots", "10-33", "active shooter", "weapon"]):
             inc_type = IncidentType.CIVIL_UNREST.value
 
         # 2. Estimate Casualty Risk (1-5)
         risk = 2
-        if inc_type == IncidentType.NON_EMERGENCY.value or "pd only" in text_lower or "property damage only" in text_lower:
+        if inc_type == IncidentType.NON_EMERGENCY.value or "pd only" in text_lower or "property damage only" in text_lower or "no injuries" in text_lower:
             risk = 1
-        elif any(w in text_lower for w in ["cpr in progress", "unaccounted for", "red tag", "ped trapped", "jaws in service", "trapped", "collapse zone", "multi-vehicle rollover", "swiftwater", "lel meters reading 70%"]):
-            risk = 5 if any(w in text_lower for w in ["cpr", "trapped", "red tag", "unaccounted"]) else 4
-        elif any(w in text_lower for w in ["injuries", "medic en route", "code 3", "2-alarm"]):
+        elif any(w in text_lower for w in ["cpr in progress", "cpr", "unaccounted for", "red tag", "ped trapped", "jaws in service", "trapped", "heavy extrication", "collapse zone", "multi-vehicle rollover"]):
+            risk = 5
+        elif any(w in text_lower for w in ["injuries", "medic en route", "code 3", "2-alarm", "swiftwater", "lel meters reading 70%", "trauma", "yellow tag"]):
             risk = 4
-        elif any(w in text_lower for w in ["standstill", "odor", "popping"]):
+        elif any(w in text_lower for w in ["standstill", "odor", "popping", "gas leak"]):
             risk = 3
 
         # 3. Estimate Credibility
@@ -132,19 +140,63 @@ class LocalTriageEngine:
 
         # 4. Extract Location Text
         loc = "Unknown"
-        patterns = [
-            r"(\d{2,5}\s+[A-Za-z0-9\.\s]+(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road))",
-            r"(I-\d{1,3}\s+(?:EB|WB|NB|SB|Eastbound|Westbound)?[^,\.\n]+)",
-            r"([A-Za-z\s]+(?:Ave|St|Rd|Blvd)\s+(?:&|and|nr|near|at)\s+[A-Za-z\s]+(?:Ave|St|Rd|Blvd|Dr))",
-            r"(Crabtree Valley Mall[^,\.\n]*)",
-            r"(Crabtree Creek[^,\.\n]*)",
-            r"(Glenwood Ave & Peace St[^,\.\n]*)",
+
+        # Check prominent landmarks first
+        known_landmarks = [
+            "crabtree valley mall",
+            "crabtree creek",
+            "glenwood ave & peace st",
+            "atlantic ave & hodges st",
+            "atlantic ave near crabtree creek",
         ]
-        for pat in patterns:
-            m = re.search(pat, text, re.IGNORECASE)
-            if m:
-                loc = m.group(1).strip()
+        for lm in known_landmarks:
+            if lm in text_lower:
+                idx = text_lower.find(lm)
+                loc = text[idx : idx + len(lm)].strip()
                 break
+
+        if loc == "Unknown":
+            # Strip radio codes before matching street addresses to prevent 10-33 / 10-70 / CODE 3 collision
+            clean_for_addr = re.sub(r"\b10-\d{2}\b", " ", text, flags=re.IGNORECASE)
+            clean_for_addr = re.sub(r"\bCODE\s*\d+\b", " ", clean_for_addr, flags=re.IGNORECASE)
+
+            # Check intersections first (e.g. Glenwood Ave & Peace St)
+            intersection_match = re.search(
+                r"\b([A-Za-z0-9\.\s]+(?:Ave|Avenue|St|Street|Rd|Road|Blvd|Boulevard|Dr|Drive|Pkwy|Parkway|Hwy|Highway)\s+(?:&|and|nr|near|at|/)\s+[A-Za-z0-9\.\s]+(?:Ave|Avenue|St|Street|Rd|Road|Blvd|Boulevard|Dr|Drive|Pkwy|Parkway|Hwy|Highway))\b",
+                clean_for_addr,
+                re.IGNORECASE,
+            )
+            if intersection_match:
+                loc = intersection_match.group(1).strip()
+            else:
+                # Check highway mile markers / exits (e.g. I-40 EB Mile 287 Cary exit)
+                hwy_match = re.search(
+                    r"\b(I-\d{1,3}\s+(?:EB|WB|NB|SB|Eastbound|Westbound)?\s*(?:(?:at|nr|near|Mile|MM)\s*[\d\w\s]+)?)\b",
+                    text,
+                    re.IGNORECASE,
+                )
+                if hwy_match:
+                    loc = hwy_match.group(1).strip()
+                else:
+                    # Check numbered street addresses (e.g. 1200 S Saunders St, 401 Fayetteville St)
+                    addr_match = re.search(
+                        r"\b(\d{1,5}\s+(?:[NSEW]\.?\s+)?[A-Za-z0-9]+(?:\s+[A-Za-z0-9]+){0,2}\s+(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road|Boulevard|Avenue))\b",
+                        clean_for_addr,
+                        re.IGNORECASE,
+                    )
+                    if addr_match:
+                        loc = addr_match.group(1).strip()
+                    else:
+                        # Check named street / corridor without number (e.g. Saunders St)
+                        street_match = re.search(
+                            r"\b((?:[NSEW]\.?\s+)?[A-Za-z0-9]+(?:\s+[A-Za-z0-9]+){0,1}\s+(?:St|Ave|Rd|Blvd|Dr|Lane|Way|Pkwy|Drive|Street|Road|Boulevard|Avenue))\b",
+                            clean_for_addr,
+                            re.IGNORECASE,
+                        )
+                        if street_match:
+                            loc = street_match.group(1).strip()
+
+        loc = loc.strip(" ,.-;")
 
         return TriageOutput(
             incident_type=inc_type,

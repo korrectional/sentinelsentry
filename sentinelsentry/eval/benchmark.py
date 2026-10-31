@@ -7,8 +7,14 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from pathlib import Path
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
+
+# Ensure UTF-8 output on Windows terminals
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 from rich.console import Console
 from rich.table import Table
 
