@@ -120,7 +120,7 @@ class VerificationAgent(BaseAgent):
         corroborators = self._find_corroborations(incident, recent_items)
 
         original_cred = incident.triage.credibility_score
-        corrob_feed_ids = [c[0].feed_id for c in corroborators]
+        corrob_feed_ids = list(dict.fromkeys(c[0].feed_id for c in corroborators))
         corrob_item_ids = [c[0].id for c in corroborators]
 
         if corroborators:

@@ -80,7 +80,7 @@ class LocalTriageEngine:
             self._is_hf_ready = True
             logger.info("Successfully loaded Gemma 2B + LoRA adapter into memory.")
         except Exception as e:
-            logger.warning(f"Could not load HuggingFace model ({e}). Using rule-based triage engine.")
+            logger.info(f"HuggingFace model not loaded ({e}). Operating in deterministic edge triage mode.")
             self._is_hf_ready = False
 
     def predict(self, raw_text: str, feed_source: Optional[str] = None) -> TriageOutput:
