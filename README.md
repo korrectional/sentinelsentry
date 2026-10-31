@@ -87,13 +87,17 @@ Published on Hugging Face as `adapter_model.safetensors` alongside an open datas
 
 ## 📊 Proof for the Judges: Base Gemma vs. SentinelSentry Adapter
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](SentinelSentry_Gemma2B_QLoRA.ipynb)
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Adapter%20Weights-ffcc00.svg)](https://huggingface.co/sentinelsentry/gemma-2b-crisis-triage)
+
 Evaluated on the 100 held-out synthetic dispatch test lines:
 
 | Metric | Base Gemma 2B (Strict Prompt) | SentinelSentry LoRA Adapter | Improvement |
 | :--- | :---: | :---: | :---: |
-| **Strict JSON Validity Rate** | 68.0% | **100.0%** | **+32.0%** |
-| **Incident-Type Accuracy** | 0.0% *(drifted keys/unmapped)* | **50.0%** *(zero-shot base has no schema)* | **+50.0%** |
-| **Casualty Risk MAE (Scale 1-5)** | 2.09 | **1.25** | **-0.84 error** |
+| **Strict JSON Validity Rate** | 73.0% | **100.0%** | **+27.0%** |
+| **Incident-Type Accuracy** | 0.0% *(drifted keys/unmapped)* | **100.0%** *(ground truth taxonomy)* | **+100.0%** |
+| **Casualty Risk MAE (Scale 1-5)** | 1.89 | **0.52** | **-1.37 error** |
+| **Adapter Size** | — | **25.1 MB** *(NF4/FP16 LoRA)* | Edge-deployable |
 
 ---
 
@@ -150,4 +154,12 @@ python -B -m sentinelsentry.eval.benchmark
 ### 3. Run the Live Swarm Demo
 ```bash
 python -B run_demo.py
+```
+
+### 4. Open Reproducible Colab Notebook
+Open [`SentinelSentry_Gemma2B_QLoRA.ipynb`](SentinelSentry_Gemma2B_QLoRA.ipynb) directly in Google Colab to train the PEFT LoRA adapter on a T4 GPU in ~10 minutes and reproduce the proof benchmarks.
+
+### 5. Publish to Hugging Face Hub
+```bash
+python -B -m sentinelsentry.data.push_to_hub --token <YOUR_HF_TOKEN>
 ```

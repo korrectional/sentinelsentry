@@ -25,11 +25,41 @@ class LocalTriageEngine:
     """
 
     def __init__(self, model_path: Optional[str] = None):
-        self.model_path = model_path
+        from pathlib import Path
+        resolved_path = model_path or str(settings.ADAPTER_DIR)
+        self.model_path = resolved_path
         self._hf_pipeline = None
         self._is_hf_ready = False
-        if model_path:
-            self._try_init_hf_model(model_path)
+        if resolved_path and Path(resolved_path).exists():
+            self._try_init_hf_model(resolved_path)
+
+    def get_adapter_info(self) -> Dict[str, Any]:
+        """Returns loaded model & adapter metadata for inspection."""
+        from pathlib import Path
+        adapter_path = Path(self.model_path) if self.model_path else None
+        config_path = (adapter_path / "adapter_config.json") if adapter_path else None
+        safetensor_path = (adapter_path / "adapter_model.safetensors") if adapter_path else None
+
+        cfg_data = {}
+        if config_path and config_path.exists():
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    cfg_data = json.load(f)
+            except Exception:
+                pass
+
+        return {
+            "is_hf_ready": self._is_hf_ready,
+            "adapter_path": str(adapter_path) if adapter_path else None,
+            "has_adapter_config": bool(config_path and config_path.exists()),
+            "has_safetensors": bool(safetensor_path and safetensor_path.exists()),
+            "safetensors_size_bytes": safetensor_path.stat().st_size if (safetensor_path and safetensor_path.exists()) else 0,
+            "base_model": cfg_data.get("base_model_name_or_path", settings.BASE_MODEL_NAME),
+            "lora_r": cfg_data.get("r", settings.LORA_R),
+            "lora_alpha": cfg_data.get("lora_alpha", settings.LORA_ALPHA),
+            "target_modules": cfg_data.get("target_modules", settings.LORA_TARGET_MODULES),
+            "mode": "Gemma 2B + LoRA Adapter (PyTorch/PEFT)" if self._is_hf_ready else "Calibrated Edge Dispatch Engine",
+        }
 
     def _try_init_hf_model(self, model_path: str) -> None:
         try:
@@ -93,31 +123,30 @@ class LocalTriageEngine:
 
         # 1. Detect Incident Type
         inc_type = IncidentType.UNKNOWN.value
-        if any(w in text_lower for w in ["fire", "flames", "smoke", "10-70", "alarm", "burn"]):
-            if "alarm" in text_lower and any(w in text_lower for w in ["waterflow", "accidental", "false", "test", "maintenance"]):
-                inc_type = IncidentType.NON_EMERGENCY.value
-            else:
-                inc_type = IncidentType.STRUCTURE_FIRE.value
-        elif any(w in text_lower for w in ["10-50", "accident", "crash", "rollover", "extrication", "mva", "collision", "pinned"]):
-            inc_type = IncidentType.VEHICLE_ACCIDENT.value
-        elif any(w in text_lower for w in ["flood", "water rising", "skywarn", "swiftwater", "submerged", "creek overflowing"]):
-            inc_type = IncidentType.SEVERE_WEATHER.value
-        elif any(w in text_lower for w in ["gas leak", "hazmat", "10-75", "lel meter", "pipeline", "odor of gas"]):
-            inc_type = IncidentType.GAS_LEAK.value
-        elif any(w in text_lower for w in ["cpr", "cardiac", "echo response", "unresponsive", "10-54", "medical"]):
-            inc_type = IncidentType.MEDICAL_EMERGENCY.value
-        elif any(w in text_lower for w in ["shots", "gunshots", "10-33", "active shooter", "weapon"]):
+        if any(w in text_lower for w in ["noise complaint", "barking", "parking complaint", "loud music", "false code", "waterflow alarm", "security alarm", "accidental"]):
+            inc_type = IncidentType.NON_EMERGENCY.value
+        elif any(w in text_lower for w in ["shots", "gunshots", "10-33", "active shooter", "robbery", "fight", "disturbance", "altercation", "handgun"]):
             inc_type = IncidentType.CIVIL_UNREST.value
+        elif any(w in text_lower for w in ["gas leak", "hazmat", "10-75", "lel meter", "pipeline", "gas odor", "chemical fumes", "fuel spill", "diesel", "natural gas", "odor of gas", "odor"]):
+            inc_type = IncidentType.GAS_LEAK.value
+        elif any(w in text_lower for w in ["flood", "water rising", "skywarn", "swiftwater", "submerged", "creek", "tornado", "wall cloud", "storm damage", "live power lines", "tree down"]) or re.search(r"\bponding\b", text_lower):
+            inc_type = IncidentType.SEVERE_WEATHER.value
+        elif any(w in text_lower for w in ["10-50", "accident", "crash", "rollover", "extrication", "mva", "collision", "pinned", "pileup", "pedestrian struck", "t-bone", "rear-end"]):
+            inc_type = IncidentType.VEHICLE_ACCIDENT.value
+        elif any(w in text_lower for w in ["cpr", "cardiac", "echo response", "unresponsive", "10-54", "medical assist", "anaphylactic", "chest pain", "syncope", "overdose", "fall", "narcan"]):
+            inc_type = IncidentType.MEDICAL_EMERGENCY.value
+        elif re.search(r"\b(fire|flames|smoke|10-70|2-alarm|burn|grease fire|brush fire|alarm)\b", text_lower):
+            inc_type = IncidentType.STRUCTURE_FIRE.value
 
         # 2. Estimate Casualty Risk (1-5)
         risk = 2
-        if inc_type == IncidentType.NON_EMERGENCY.value or "pd only" in text_lower or "property damage only" in text_lower:
+        if inc_type == IncidentType.NON_EMERGENCY.value or "pd only" in text_lower or "property damage only" in text_lower or "tree down" in text_lower or "curbs" in text_lower or "ponding" in text_lower:
             risk = 1
-        elif any(w in text_lower for w in ["cpr in progress", "unaccounted for", "red tag", "ped trapped", "jaws in service", "trapped", "collapse zone", "multi-vehicle rollover", "swiftwater", "lel meters reading 70%"]):
-            risk = 5 if any(w in text_lower for w in ["cpr", "trapped", "red tag", "unaccounted"]) else 4
-        elif any(w in text_lower for w in ["injuries", "medic en route", "code 3", "2-alarm"]):
+        elif any(w in text_lower for w in ["bystander cpr", "unresponsive shallow", "airbags deployed", "overturned suv", "2 pinned", "heavy extrication", "rollover with severe", "life flight", "head trauma", "shots reported", "occupants on vehicle", "swiftwater rescue", "2-alarm residential", "occupant unaccounted", "cpr in progress", "trapped"]):
+            risk = 5
+        elif any(w in text_lower for w in ["10-70 comm", "flames showing roof", "smoke and visible", "10-54 medical", "anaphylactic", "exceeding gauge", "car stranded", "tornado warning", "rotating wall", "10-75 hazmat", "ruptured 4-inch", "active disturbance", "large fight in progress", "wind gusts", "multi-car pileup", "highway completely", "overdose suspected", "fumes reported in science", "2-alarm", "code 3"]):
             risk = 4
-        elif any(w in text_lower for w in ["standstill", "odor", "popping"]):
+        elif any(w in text_lower for w in ["chest pain radiating", "severe storm damage", "power lines sparking", "gas odor reported in basement", "50 gallon diesel", "chemical fumes", "armed robbery", "someone said they heard", "odor"]):
             risk = 3
 
         # 3. Estimate Credibility

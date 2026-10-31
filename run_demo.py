@@ -64,6 +64,8 @@ def run_demo():
     # 2. Register Triage, Verification, Geocoder, and Dashboard Agents
     triage_worker1 = TriageAgent(bus=bus, worker_id=1, engine=LocalTriageEngine())
     triage_worker2 = TriageAgent(bus=bus, worker_id=2, engine=LocalTriageEngine())
+    adapter_info = triage_worker1.engine.get_adapter_info()
+
     verification_agent = VerificationAgent(bus=bus)
     geocoder_agent = GeocoderAgent(bus=bus, enable_network=False)
     dashboard_agent = AlertDashboardAgent(bus=bus, console=console)
@@ -75,6 +77,9 @@ def run_demo():
     coordinator.set_dashboard_agent(dashboard_agent)
 
     console.print("\n[bold green][+] Swarm initialized: 5 Ingest Agents, 2 Triage Workers, 1 Verification Agent, 1 Geocoder, 1 Live Board[/bold green]")
+    console.print(f"[dim]Triage Engine: {adapter_info['mode']} | Base: {adapter_info['base_model']} (LoRA r={adapter_info['lora_r']}, alpha={adapter_info['lora_alpha']})[/dim]")
+    if adapter_info["has_safetensors"]:
+        console.print(f"[dim]Adapter Weights: adapter_model.safetensors ({adapter_info['safetensors_size_bytes']:,} bytes)[/dim]")
     console.print("[dim]Simulating parallel feed ingestion and multi-stage triage...[/dim]\n")
 
     # 3. Step through initial feed discovery

@@ -1,0 +1,28 @@
+{
+  "base_model": "google/gemma-2b-it",
+  "dataset": "Disaster Response / CrisisLex subset (900 train + 100 held-out test)",
+  "epochs": 3,
+  "learning_rate": 0.0002,
+  "lr_scheduler_type": "linear",
+  "warmup_ratio": 0.05,
+  "per_device_train_batch_size": 4,
+  "gradient_accumulation_steps": 4,
+  "optim": "paged_adamw_8bit",
+  "fp16": false,
+  "bf16": true,
+  "peft_type": "LORA",
+  "r": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05,
+  "target_modules": [
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj",
+    "gate_proj",
+    "up_proj",
+    "down_proj"
+  ],
+  "max_seq_length": 512,
+  "output_dir": "./sentinelsentry-gemma-2b-adapter"
+}
