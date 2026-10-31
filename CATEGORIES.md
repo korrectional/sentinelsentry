@@ -41,7 +41,7 @@ flowchart LR
 - **Open Standards & Self-Hosting:**
   - Standard GeoRSS and Atom/RSS 2.0 public crisis feed ingestion ([`sentinelsentry/feeds/live.py`](file:///C:/Users/david/src/--misc/mlhossai/sentinelsentry/feeds/live.py)).
   - OpenStreetMap & Leaflet mapping with zero mandatory external API keys.
-  - 100% test coverage with **76 automated unit and adversarial tests** running in GitHub Actions CI across Python 3.10, 3.11, and 3.12.
+  - 100% test coverage with **77 automated unit and adversarial tests** running in GitHub Actions CI across Python 3.10, 3.11, and 3.12.
 
 ---
 

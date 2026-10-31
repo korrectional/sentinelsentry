@@ -166,6 +166,11 @@ def extract_georss_coordinates(entry: Any, raw_entry_text: str = "") -> Tuple[Op
     Extract latitude and longitude from GeoRSS elements in feedparser entry.
     Supports <georss:point> (Point GeoJSON in entry.where), geo_lat/geo_long, or regex extraction.
     """
+    import math
+
+    def _is_valid_coord(la: float, lo: float) -> bool:
+        return math.isfinite(la) and math.isfinite(lo) and -90.0 <= la <= 90.0 and -180.0 <= lo <= 180.0
+
     # 1. feedparser parsed GeoJSON Point in entry.where
     where = getattr(entry, "where", None) or entry.get("where")
     if isinstance(where, dict):
@@ -175,7 +180,8 @@ def extract_georss_coordinates(entry: Any, raw_entry_text: str = "") -> Tuple[Op
                 # GeoJSON coordinates format is [longitude, latitude]
                 lon = float(coords[0])
                 lat = float(coords[1])
-                return lat, lon
+                if _is_valid_coord(lat, lon):
+                    return lat, lon
             except (ValueError, TypeError):
                 pass
 
@@ -184,7 +190,9 @@ def extract_georss_coordinates(entry: Any, raw_entry_text: str = "") -> Tuple[Op
     lon_val = entry.get("geo_long") or getattr(entry, "geo_long", None)
     if lat_val is not None and lon_val is not None:
         try:
-            return float(lat_val), float(lon_val)
+            la, lo = float(lat_val), float(lon_val)
+            if _is_valid_coord(la, lo):
+                return la, lo
         except (ValueError, TypeError):
             pass
 
@@ -195,7 +203,8 @@ def extract_georss_coordinates(entry: Any, raw_entry_text: str = "") -> Tuple[Op
         try:
             lat = float(point_match.group(1))
             lon = float(point_match.group(2))
-            return lat, lon
+            if _is_valid_coord(lat, lon):
+                return lat, lon
         except (ValueError, TypeError):
             pass
 

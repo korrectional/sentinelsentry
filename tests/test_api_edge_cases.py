@@ -113,3 +113,64 @@ def test_swarm_telemetry_schema_completeness():
         assert "processed_count" in agent
         assert "error_count" in agent
         assert "last_heartbeat" in agent
+
+
+def test_escalation_stat_sync_on_dispatch_dismiss_override():
+    """Verify that dispatching, dismissing, or overriding an escalated incident strictly syncs stats."""
+    reset_demo()
+    dash = state.dashboard
+
+    item = RawFeedItem(
+        id="stat-test-esc-1",
+        feed_id="cad_police",
+        feed_name="Police CAD",
+        title="2-Alarm Fire Test",
+        raw_text="10-70 COMM BLDG 1200 S SAUNDERS ST FLAMES ROOF",
+    )
+    from sentinelsentry.schema import TriageOutput, EnrichedIncident
+    inc = EnrichedIncident(
+        incident_id="INC-stat-test-esc-1",
+        feed_item=item,
+        triage=TriageOutput(
+            incident_type="Structure Fire",
+            casualty_risk_level=5,
+            credibility_score=0.95,
+            location_text="1200 S Saunders St",
+        ),
+        is_escalated=True,
+    )
+    dash.process_incident(inc)
+    assert "INC-stat-test-esc-1" in dash.escalated_ids
+    esc_before = dash.stats["escalated_count"]
+    assert esc_before >= 1
+
+    # Dispatch directly without acknowledging first
+    dash.dispatch_incident("INC-stat-test-esc-1", units=["Engine 4"])
+    assert "INC-stat-test-esc-1" not in dash.escalated_ids
+    assert dash.stats["escalated_count"] == esc_before - 1
+
+    # Test manual escalation override sync
+    inc2 = EnrichedIncident(
+        incident_id="INC-stat-test-esc-2",
+        feed_item=item,
+        triage=TriageOutput(
+            incident_type="Structure Fire",
+            casualty_risk_level=2,
+            credibility_score=0.70,
+            location_text="1200 S Saunders St",
+        ),
+        is_escalated=False,
+    )
+    dash.process_incident(inc2)
+    routine_before = dash.stats["routine_count"]
+    esc_count_before = dash.stats["escalated_count"]
+
+    dash.escalate_incident("INC-stat-test-esc-2", reason="Chief Order")
+    assert dash.stats["escalated_count"] == esc_count_before + 1
+    assert dash.stats["routine_count"] == max(0, routine_before - 1)
+    assert "INC-stat-test-esc-2" in dash.escalated_ids
+
+    # Dismiss directly
+    dash.dismiss_incident("INC-stat-test-esc-2", reason="Incident Controlled")
+    assert dash.stats["escalated_count"] == esc_count_before
+    assert "INC-stat-test-esc-2" not in dash.escalated_ids

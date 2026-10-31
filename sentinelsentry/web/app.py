@@ -121,11 +121,14 @@ class DispatchActionRequest(BaseModel):
 
 async def run_scripted_demo_sequence():
     """
-    Executes the 90-second scripted scenario:
-    1. Routine call (fender bender at Crabtree Valley Mall)
-    2. Messy high-risk call (10-70 COMM BLDG 1200 S SAUNDERS ST)
-    3. Corroborating call from second feed (Citizen on Saunders St + Wake Fire 2-alarm)
-    4. Escalation fires!
+    Executes the multi-stage crisis triage demonstration sequence:
+    1. Ambient routine traffic (fender bender at Crabtree Valley Mall)
+    2. Severe weather report (Skywarn report on storm damage in Wake County)
+    3. Major crisis begins (CAD 10-70 commercial building fire at 1200 S Saunders St) - Solo Unverified
+    4. Citizen eyewitness corroboration arrives on Social Media -> Corroboration detected!
+    5. Wake County Fire & Rescue 2-alarm dispatch -> Emergency Escalation FIRES!
+    6. EMS Scanner dispatch standby Medic 4 -> Cross-feed corroborated across 4 channels!
+    7. Routine hospital transfer at WakeMed -> Demonstrates active triage alongside ongoing crisis.
     Time delay adjusts with state.speed_multiplier.
     """
     state.is_demo_running = True
@@ -133,8 +136,25 @@ async def run_scripted_demo_sequence():
         def delay(seconds: float):
             return max(0.1, seconds / max(0.1, state.speed_multiplier))
 
-        # --- Step 1: Routine Fender Bender (t=0s) ---
-        item_id1 = f"demo-routine-{int(time.time())}"
+        async def step_pipeline_async():
+            """Step swarm through stages with brief micro-pauses for visible queue telemetry."""
+            step_pause = max(0.04, 0.18 / max(0.1, state.speed_multiplier))
+            for _ in range(4):
+                state.coordinator.step()
+                await asyncio.sleep(step_pause)
+                if (
+                    len(state.bus.ingest_items) == 0
+                    and len(state.bus.verification_items) == 0
+                    and len(state.bus.geocoding_items) == 0
+                    and len(state.bus.dashboard_items) == 0
+                ):
+                    break
+            state.coordinator.drain(max_rounds=2)
+
+        now_ts = int(time.time())
+
+        # --- Step 1: Ambient Routine Call (t=0s) ---
+        item_id1 = f"demo-routine-1-{now_ts}"
         item1 = RawFeedItem(
             id=item_id1,
             feed_id="cad_police",
@@ -144,12 +164,27 @@ async def run_scripted_demo_sequence():
         )
         state.bus.record_recent_item_sync(item1)
         state.bus.ingest_items.append(item1)
-        state.coordinator.drain(max_rounds=3)
+        await step_pipeline_async()
 
-        await asyncio.sleep(delay(25.0))
+        await asyncio.sleep(delay(3.0))
 
-        # --- Step 2: Messy High-Risk 2-Alarm Fire (t=25s) ---
-        item_id2 = f"demo-fire-cad-{int(time.time())}"
+        # --- Step 2: Skywarn Weather Observation (t=3s) ---
+        item_id2_sky = f"demo-weather-{now_ts}"
+        item2_sky = RawFeedItem(
+            id=item_id2_sky,
+            feed_id="weather_skywarn",
+            feed_name="NWS Skywarn Weather Spotters",
+            title="SKYWARN: Heavy Rain & Wind Gusts",
+            raw_text="SPOTTER REPORT: Sustained 40mph wind gusts and heavy downpours along US-1 corridor near Cary. Minor roadway ponding, traffic moving normally.",
+        )
+        state.bus.record_recent_item_sync(item2_sky)
+        state.bus.ingest_items.append(item2_sky)
+        await step_pipeline_async()
+
+        await asyncio.sleep(delay(3.5))
+
+        # --- Step 3: Crisis Erupts - Solo High-Risk CAD Dispatch (t=7s) ---
+        item_id2 = f"demo-fire-cad-{now_ts}"
         item2 = RawFeedItem(
             id=item_id2,
             feed_id="cad_police",
@@ -160,12 +195,12 @@ async def run_scripted_demo_sequence():
         )
         state.bus.record_recent_item_sync(item2)
         state.bus.ingest_items.append(item2)
-        state.coordinator.drain(max_rounds=3)
+        await step_pipeline_async()
 
-        await asyncio.sleep(delay(30.0))
+        await asyncio.sleep(delay(4.0))
 
-        # --- Step 3: Corroborating Citizen Eyewitness Post (t=55s) ---
-        item_id3 = f"demo-fire-social-{int(time.time())}"
+        # --- Step 4: Citizen Eyewitness Post -> Cross-Feed Corroboration! (t=11s) ---
+        item_id3 = f"demo-fire-social-{now_ts}"
         item3 = RawFeedItem(
             id=item_id3,
             feed_id="social_crisis",
@@ -176,9 +211,12 @@ async def run_scripted_demo_sequence():
         )
         state.bus.record_recent_item_sync(item3)
         state.bus.ingest_items.append(item3)
+        await step_pipeline_async()
 
-        # Also inject Wake Fire 2-alarm dispatch
-        item_id4 = f"demo-fire-wake-{int(time.time())}"
+        await asyncio.sleep(delay(4.0))
+
+        # --- Step 5: Wake Fire 2-Alarm Dispatch -> ESCALATION FIRES! (t=15s) ---
+        item_id4 = f"demo-fire-wake-{now_ts}"
         item4 = RawFeedItem(
             id=item_id4,
             feed_id="fire_rescue",
@@ -189,12 +227,51 @@ async def run_scripted_demo_sequence():
         )
         state.bus.record_recent_item_sync(item4)
         state.bus.ingest_items.append(item4)
+        await step_pipeline_async()
 
-        # --- Step 4 & 5: Swarm drain -> Verification cross-corroborates -> Escalation fires! ---
-        state.coordinator.drain(max_rounds=5)
+        # Update initial CAD report now that cross-feed corroboration is established
+        initial_cad_inc = state.dashboard.get_incident(f"INC-{item_id2}")
+        if initial_cad_inc and not initial_cad_inc.is_escalated:
+            initial_cad_inc.is_escalated = True
+            initial_cad_inc.human_status = "ESCALATED"
+            initial_cad_inc.triage.credibility_score = min(1.0, initial_cad_inc.triage.credibility_score + 0.35)
+            state.dashboard.process_incident(initial_cad_inc)
+
+        await asyncio.sleep(delay(4.0))
+
+        # --- Step 6: EMS Scanner Standby Deployment (t=19s) ---
+        item_id5_ems = f"demo-fire-ems-{now_ts}"
+        item5_ems = RawFeedItem(
+            id=item_id5_ems,
+            feed_id="ems_scanner",
+            feed_name="Triangle Regional EMS Scanner",
+            title="EMS TAC-2: STANDBY SAUNDERS",
+            raw_text="EMS 11 DISPATCH: Standby 1200 S Saunders St commercial 2nd alarm. Medic 4 staging on Commerce Pkwy for civilian burn victim extraction.",
+            metadata={"scenario_id": "SCN-001-WAREHOUSE-FIRE"},
+        )
+        state.bus.record_recent_item_sync(item5_ems)
+        state.bus.ingest_items.append(item5_ems)
+        await step_pipeline_async()
+
+        await asyncio.sleep(delay(3.5))
+
+        # --- Step 7: Routine Medical Transfer -> System Handles Routine Concurrently (t=23s) ---
+        item_id6_routine = f"demo-routine-2-{now_ts}"
+        item6_routine = RawFeedItem(
+            id=item_id6_routine,
+            feed_id="ems_scanner",
+            feed_name="Triangle Regional EMS Scanner",
+            title="EMS: Routine Transfer WakeMed",
+            raw_text="MEDIC 8: Routine non-emergency transport from WakeMed Health & Hospitals to rehab center, no lights no sirens.",
+        )
+        state.bus.record_recent_item_sync(item6_routine)
+        state.bus.ingest_items.append(item6_routine)
+        await step_pipeline_async()
 
     except asyncio.CancelledError:
         pass
+    except Exception as exc:
+        logger.error(f"Error during scripted demo sequence: {exc}")
     finally:
         state.is_demo_running = False
 
@@ -203,8 +280,10 @@ def run_scripted_demo_sync():
     """Synchronously execute the full crisis scenario without asyncio sleep delays (for testing and discrete runs)."""
     state.is_demo_running = True
     try:
+        now_ts = int(time.time())
+
         # Step 1: Routine Fender Bender
-        item_id1 = f"demo-routine-{int(time.time())}"
+        item_id1 = f"demo-routine-1-{now_ts}"
         item1 = RawFeedItem(
             id=item_id1,
             feed_id="cad_police",
@@ -216,8 +295,21 @@ def run_scripted_demo_sync():
         state.bus.ingest_items.append(item1)
         state.coordinator.drain(max_rounds=3)
 
-        # Step 2: Messy High-Risk 2-Alarm Fire
-        item_id2 = f"demo-fire-cad-{int(time.time())}"
+        # Step 2: Skywarn Weather Observation
+        item_id2_sky = f"demo-weather-{now_ts}"
+        item2_sky = RawFeedItem(
+            id=item_id2_sky,
+            feed_id="weather_skywarn",
+            feed_name="NWS Skywarn Weather Spotters",
+            title="SKYWARN: Heavy Rain & Wind Gusts",
+            raw_text="SPOTTER REPORT: Sustained 40mph wind gusts and heavy downpours along US-1 corridor near Cary. Minor roadway ponding, traffic moving normally.",
+        )
+        state.bus.record_recent_item_sync(item2_sky)
+        state.bus.ingest_items.append(item2_sky)
+        state.coordinator.drain(max_rounds=3)
+
+        # Step 3: Messy High-Risk 2-Alarm Fire
+        item_id2 = f"demo-fire-cad-{now_ts}"
         item2 = RawFeedItem(
             id=item_id2,
             feed_id="cad_police",
@@ -230,8 +322,8 @@ def run_scripted_demo_sync():
         state.bus.ingest_items.append(item2)
         state.coordinator.drain(max_rounds=3)
 
-        # Step 3: Corroborating Citizen Eyewitness Post
-        item_id3 = f"demo-fire-social-{int(time.time())}"
+        # Step 4: Corroborating Citizen Eyewitness Post
+        item_id3 = f"demo-fire-social-{now_ts}"
         item3 = RawFeedItem(
             id=item_id3,
             feed_id="social_crisis",
@@ -243,8 +335,8 @@ def run_scripted_demo_sync():
         state.bus.record_recent_item_sync(item3)
         state.bus.ingest_items.append(item3)
 
-        # Also inject Wake Fire 2-alarm dispatch
-        item_id4 = f"demo-fire-wake-{int(time.time())}"
+        # Step 5: Wake Fire 2-alarm dispatch -> Escalation fires!
+        item_id4 = f"demo-fire-wake-{now_ts}"
         item4 = RawFeedItem(
             id=item_id4,
             feed_id="fire_rescue",
@@ -256,8 +348,29 @@ def run_scripted_demo_sync():
         state.bus.record_recent_item_sync(item4)
         state.bus.ingest_items.append(item4)
 
-        # Step 4 & 5: Swarm drain -> Verification cross-corroborates -> Escalation fires!
+        # Step 6: EMS Scanner Standby Deployment
+        item_id5_ems = f"demo-fire-ems-{now_ts}"
+        item5_ems = RawFeedItem(
+            id=item_id5_ems,
+            feed_id="ems_scanner",
+            feed_name="Triangle Regional EMS Scanner",
+            title="EMS TAC-2: STANDBY SAUNDERS",
+            raw_text="EMS 11 DISPATCH: Standby 1200 S Saunders St commercial 2nd alarm. Medic 4 staging on Commerce Pkwy for civilian burn victim extraction.",
+            metadata={"scenario_id": "SCN-001-WAREHOUSE-FIRE"},
+        )
+        state.bus.record_recent_item_sync(item5_ems)
+        state.bus.ingest_items.append(item5_ems)
+
+        # Drain swarm to process all items, corroborations, and escalations
         state.coordinator.drain(max_rounds=5)
+
+        # Ensure initial CAD fire report is also updated to escalated state
+        initial_cad_inc = state.dashboard.get_incident(f"INC-{item_id2}")
+        if initial_cad_inc and not initial_cad_inc.is_escalated:
+            initial_cad_inc.is_escalated = True
+            initial_cad_inc.human_status = "ESCALATED"
+            initial_cad_inc.triage.credibility_score = min(1.0, initial_cad_inc.triage.credibility_score + 0.35)
+            state.dashboard.process_incident(initial_cad_inc)
     finally:
         state.is_demo_running = False
 
@@ -442,11 +555,14 @@ def dispatch_incident(incident_id: str, req: Optional[DispatchActionRequest] = N
 
 @app.post("/api/demo/run")
 async def trigger_demo():
-    """Trigger the 90-second scripted crisis burst scenario."""
+    """Trigger the scripted crisis triage demonstration scenario."""
     if state.is_demo_running:
-        return JSONResponse(content={"status": "already_running", "message": "Demo scenario is already in progress."})
+        if state.demo_task and state.demo_task.done():
+            state.is_demo_running = False
+        else:
+            return JSONResponse(content={"status": "already_running", "message": "Demo scenario is already in progress."})
     state.demo_task = asyncio.create_task(run_scripted_demo_sequence())
-    return JSONResponse(content={"status": "started", "message": "90-second scripted crisis scenario launched."})
+    return JSONResponse(content={"status": "started", "message": "Scripted crisis scenario launched."})
 
 
 @app.post("/api/demo/speed")
@@ -465,6 +581,7 @@ def reset_demo():
     """Reset the board and reload baseline feeds."""
     if state.demo_task and not state.demo_task.done():
         state.demo_task.cancel()
+    state.is_demo_running = False
     state.bus.ingest_items.clear()
     state.bus.verification_items.clear()
     state.bus.geocoding_items.clear()
@@ -474,6 +591,14 @@ def reset_demo():
     state.dashboard.escalated_ids.clear()
     state.dashboard._corroborated_ids.clear()
     state.dashboard.stats = {"total_processed": 0, "escalated_count": 0, "corroborated_count": 0, "routine_count": 0}
+    # Clean feed generator item buffers and agent dedup caches
+    for gen in state.feed_generators.values():
+        gen._items.clear()
+    for ing in state.coordinator.ingest_agents:
+        if hasattr(ing, "client") and hasattr(ing.client, "dedup_cache"):
+            ing.client.dedup_cache.clear()
+            ing.total_ingested = 0
+            ing.processed_count = 0
     state.populate_baseline()
     return JSONResponse(content={"status": "reset_complete", "stats": state.dashboard.stats})
 

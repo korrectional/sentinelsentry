@@ -159,6 +159,36 @@ def test_scripted_demo_full_lifecycle():
     set_demo_speed(SpeedControlRequest(multiplier=1.0))
 
 
+@pytest.mark.asyncio
+async def test_async_scripted_demo_progression():
+    """Verify asynchronous progression of events across multiple feeds during demo run."""
+    reset_demo()
+    set_demo_speed(SpeedControlRequest(multiplier=100.0))
+
+    await run_scripted_demo_sequence()
+
+    assert state.is_demo_running is False
+
+    inc_res = get_incidents()
+    inc_data = json.loads(inc_res.body.decode("utf-8"))
+    incidents = inc_data["incidents"]
+
+    # Verify both routine and escalated events progressed
+    demo_incidents = [i for i in incidents if "demo-" in i["incident_id"]]
+    assert len(demo_incidents) >= 6
+
+    # Verify cross-feed multi-channel progression (cad, social, fire, ems, weather)
+    feed_sources = {i["feed_id"] for i in demo_incidents}
+    assert "cad_police" in feed_sources
+    assert "fire_rescue" in feed_sources
+    assert "social_crisis" in feed_sources
+    assert "ems_scanner" in feed_sources
+    assert "weather_skywarn" in feed_sources
+
+    # Reset speed back to normal 1.0x
+    set_demo_speed(SpeedControlRequest(multiplier=1.0))
+
+
 def test_sse_event_payload_structure():
     """Verify that SSE stream payload contains required keys and formats."""
     incidents = state.dashboard.get_incidents_payload()

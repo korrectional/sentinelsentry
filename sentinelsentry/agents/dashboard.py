@@ -156,11 +156,12 @@ class AlertDashboardAgent(BaseAgent):
         return self._find_incident(incident_id)
 
     def get_pending_escalations(self) -> List[EnrichedIncident]:
-        """Returns incidents requiring urgent human dispatcher action."""
-        return [
-            inc for inc in self.incidents.values()
-            if inc.is_escalated
-        ]
+        """Returns incidents requiring urgent human dispatcher action sorted by highest risk and recency."""
+        return sorted(
+            [inc for inc in self.incidents.values() if inc.is_escalated],
+            key=lambda x: (x.triage.casualty_risk_level, x.created_at),
+            reverse=True,
+        )
 
     def acknowledge_incident(self, incident_id: str) -> EnrichedIncident:
         """Dispatcher action: Acknowledge an active emergency escalation."""
@@ -194,6 +195,7 @@ class AlertDashboardAgent(BaseAgent):
         inc.is_escalated = False
         if actual_id in self.escalated_ids:
             self.escalated_ids.remove(actual_id)
+            self.stats["escalated_count"] = max(0, self.stats["escalated_count"] - 1)
         if dispatcher_notes:
             inc.metadata["dispatcher_notes"] = dispatcher_notes
         inc.metadata["dispatched_units"] = assigned
@@ -211,6 +213,7 @@ class AlertDashboardAgent(BaseAgent):
         inc.is_escalated = False
         if actual_id in self.escalated_ids:
             self.escalated_ids.remove(actual_id)
+            self.stats["escalated_count"] = max(0, self.stats["escalated_count"] - 1)
         inc.metadata["dismissed_reason"] = reason
         inc.metadata["dismissed_at"] = datetime.now(timezone.utc).isoformat()
         logger.info(f"[Dispatcher] Dismissed incident {actual_id}: {reason}")
@@ -227,6 +230,8 @@ class AlertDashboardAgent(BaseAgent):
         inc.metadata["manual_escalation_reason"] = reason
         if actual_id not in self.escalated_ids:
             self.escalated_ids.append(actual_id)
+            self.stats["escalated_count"] += 1
+            self.stats["routine_count"] = max(0, self.stats["routine_count"] - 1)
         logger.info(f"[Dispatcher] Manually escalated incident {actual_id}: {reason}")
         return inc
 

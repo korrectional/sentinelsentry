@@ -190,7 +190,7 @@ bash deploy/droplet_deploy.sh
 ```bash
 python -B -m pytest tests/
 ```
-*(76 comprehensive unit tests covering agents, multimodal triage, verification, geocoding, live RSS feeds, and web endpoints pass in ~3.5s).*
+*(77 comprehensive unit tests covering agents, multimodal triage, verification, geocoding, live RSS feeds, and web endpoints pass in ~3.5s).*
 
 ### 4. Run the Eval Benchmark Proof
 ```bash
